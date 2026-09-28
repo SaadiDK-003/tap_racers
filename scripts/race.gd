@@ -177,6 +177,10 @@ func _process(delta: float) -> void:
 	pads.set_places(places)
 	_call_overtakes(places)
 	if world.powerups and phase == Phase.RACING:
+		# Lap 1 is a clean race: the boxes appear once the leader starts lap 2.
+		if not world.powerups.active and order[0].progress >= world.track.length:
+			world.powerups.activate()
+			Sfx.play(Sfx.pickup, -8.0, 0.8)
 		world.powerups.update_cars(places)
 	if phase == Phase.RACING:
 		if coach:
@@ -242,6 +246,9 @@ func _start_race() -> void:
 	for car in cars:
 		car.state = Car.State.RACING
 	world.effects.show_tags = false
+	var cpus := cars.filter(func(c): return Game.is_cpu(c.index))
+	if not cpus.is_empty():
+		_cpu_says(cpus[randi() % cpus.size()], "start", 1.0)
 	_lights.set_state(3, true)
 	_pop(_lights, 1.2)
 	Sfx.play(Sfx.go, -1.0)
@@ -314,6 +321,7 @@ func _announce_winner(car) -> void:
 	var who: String = Game.PLAYER_NAMES[i] if Game.is_cpu(i) else "P%d" % (i + 1)
 	_flash("%s WINS!" % who, 1.4, car.color)
 	world.effects.celebrate(car)
+	_cpu_says(car, "win")
 	if Game.debug_shot_on == "win":
 		Game.debug_capture(1.0)
 	Sfx.play(Sfx.fanfare)
@@ -335,8 +343,10 @@ func _call_overtakes(places: Array[int]) -> void:
 		_last_callout[i] = race_time
 		if place == 1:
 			pads.toast(i, "TOOK THE LEAD!", Color(1.0, 0.85, 0.2))
+			_cpu_says(car, "lead", 0.7)
 		else:
 			pads.toast(i, "OVERTAKE!", Color(0.5, 1.0, 0.6))
+			_cpu_says(car, "overtake", 0.4)
 
 
 func _on_lap_done(car, done: int) -> void:
@@ -458,6 +468,7 @@ func _on_pickup(car, item: String) -> void:
 				world.effects.bolt(c)
 				if c.zap():
 					zapped += 1
+					_cpu_says(c, "hit", 0.5)
 					pads.toast(c.index, "ZAPPED!", Color(1.0, 0.9, 0.3), "by " + _short_name(i))
 			pads.toast(i, "LIGHTNING!", Color(1.0, 0.9, 0.3), "zapped %d car%s" % [zapped, "" if zapped == 1 else "s"])
 			_flash_rect.color = Color(1, 1, 0.85, 0.35)
@@ -475,6 +486,7 @@ func _on_mine_hit(target, owner) -> void:
 	Sfx.play(Sfx.crash, -2.0, 0.9)
 	world.shake = maxf(world.shake, 0.3)
 	if target.rocket_hit():
+		_cpu_says(target, "hit", 0.8)
 		pads.toast(target.index, "MINE!", Color(1.0, 0.45, 0.2), "dropped by " + _short_name(owner.index))
 		pads.toast(owner.index, "MINE HIT!", Color(1.0, 0.85, 0.2), _short_name(target.index) + " went boom")
 		_rocket_hits[owner.index] += 1
@@ -488,6 +500,7 @@ func _on_rocket_hit(target, shooter) -> void:
 	Sfx.play(Sfx.crash, -2.0, 0.8)
 	world.shake = maxf(world.shake, 0.3)
 	if target.rocket_hit():
+		_cpu_says(target, "hit", 0.8)
 		pads.toast(target.index, "BOOM!", Color(1.0, 0.45, 0.2), "hit by " + _short_name(shooter.index))
 		pads.toast(shooter.index, "DIRECT HIT!", Color(1.0, 0.85, 0.2))
 		_rocket_hits[shooter.index] += 1
@@ -496,7 +509,7 @@ func _on_rocket_hit(target, shooter) -> void:
 
 
 func _short_name(i: int) -> String:
-	return Game.PLAYER_NAMES[i] if Game.is_cpu(i) else "P%d" % (i + 1)
+	return Game.short_name(i)
 
 
 func _on_shield_used(car) -> void:
@@ -506,7 +519,29 @@ func _on_shield_used(car) -> void:
 	Sfx.play(Sfx.beep, -4.0, 1.5)
 
 
+var _last_said := -10.0
+var _said_at: Array[float] = [-10.0, -10.0, -10.0, -10.0]
+
+
+## A CPU driver says a line for `moment` in a speech bubble (rate-limited so the
+## screen never fills up with chatter).
+func _cpu_says(car, moment: String, chance := 0.6) -> void:
+	var i: int = car.index
+	if not Game.is_cpu(i) or Game.debug_bots or coach or trial:
+		return
+	var urgent := moment == "win"
+	if not urgent and (race_time - _last_said < 2.5 or race_time - _said_at[i] < 7.0 or randf() > chance):
+		return
+	var text: String = Game.Drivers.line(Game.driver(i), moment)
+	if text == "":
+		return
+	_last_said = race_time
+	_said_at[i] = race_time
+	world.effects.say(car, text)
+
+
 func _on_crash(car) -> void:
+	_cpu_says(car, "crash", 0.5)
 	if coach:
 		coach.on_crash()
 	world.shake = 0.28

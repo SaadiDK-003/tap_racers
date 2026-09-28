@@ -336,8 +336,9 @@ func _draw_pad(i: int) -> void:
 	if i >= humans:
 		# CPU rival: dimmed button with a label instead of a key.
 		draw_circle(Vector2.ZERO, r - 7.0, Color(0, 0, 0, 0.35))
-		draw_string(_font, Vector2(-RADIUS, 12), "CPU", HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 30, Color(1, 1, 1, 0.9))
-		draw_string(_font, Vector2(-RADIUS, 34), Game.CPU_LEVELS[Game.cpu_level], HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 12, Color(1, 1, 1, 0.7))
+		var tag: String = Game.driver(i).tag
+		draw_string(_font, Vector2(-RADIUS, 10), tag, HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 26 if tag.length() <= 5 else 20, Color(1, 1, 1, 0.9))
+		draw_string(_font, Vector2(-RADIUS, 32), "CPU • " + Game.CPU_LEVELS[Game.cpu_level], HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 11, Color(1, 1, 1, 0.7))
 	elif not Game.is_touch():
 		# Keyboard: show the player's key. Phones get a plain coloured button (the
 		# speed ring and the pulsing nitro ring say everything).

@@ -37,6 +37,8 @@ var _rockets: Array[Dictionary] = [] # {s, lane, shooter, target, t, dir}
 var _prev: Dictionary = {} # car -> progress last frame
 var _t := 0.0
 var _glow: Node2D
+var active := false # boxes are hidden (and can't be picked up) until activate()
+var _appear := 0.0 # pop-in animation 0..1
 var _roulette: Array[Dictionary] = [] # {car, item, t} item boxes still spinning
 var _icons: Node2D # roulette icons, drawn above the cars
 const ROULETTE_TIME := 0.75
@@ -90,6 +92,8 @@ func _process(delta: float) -> void:
 		for i in boxes.size():
 			boxes[i] = maxf(0.0, boxes[i] - delta)
 	_update_rockets(delta)
+	if active:
+		_appear = minf(1.0, _appear + delta * 3.0)
 	for m in _mines:
 		m.t += delta
 	_mines = _mines.filter(func(m): return m.t < MINE_LIFE and m.lanes.has(true))
@@ -113,6 +117,8 @@ func update_cars(places: Array[int]) -> void:
 		if car.state != Car.State.RACING or now <= before:
 			continue
 		_check_mines(car, before, now)
+		if not active:
+			continue
 		for spot in _spots:
 			if _crossed(before, now, spot.s) and car.index < spot.boxes.size() and spot.boxes[car.index] <= 0.0:
 				spot.boxes[car.index] = RESPAWN
@@ -133,6 +139,12 @@ func _check_mines(car, before: float, now: float) -> void:
 			if effects:
 				effects.burst(car.position, Color(1.0, 0.4, 0.15))
 			mine_hit.emit(car, m.owner)
+
+
+## Brings the boxes out (the race calls this when the leader starts lap 2).
+func activate() -> void:
+	active = true
+	_appear = 0.0
 
 
 func _spinning(car) -> bool:
@@ -267,6 +279,8 @@ func _draw() -> void:
 			if lanes[i]:
 				_draw_mine(track.point_at(m.s, track.lane_offsets[i]), m.t + i, fade)
 	for spot in _spots:
+		if not active:
+			break
 		var boxes: Array[float] = spot.boxes
 		for i in boxes.size():
 			if boxes[i] > 0.0:
@@ -281,14 +295,15 @@ func _draw() -> void:
 func _draw_box(p: Vector2, phase: float) -> void:
 	var bob := sin(_t * 4.0 + phase) * 2.0
 	var rot := _t * 1.5 + phase
+	var grow := minf(1.0, _appear * 1.3) # boxes pop in when they're activated
 	var up := -(get_parent() as Node2D).rotation
 	draw_circle(p + Vector2(4, 6), 13.0, Color(0, 0, 0, 0.3))
-	draw_set_transform(p + Vector2(0, bob).rotated(up), rot)
+	draw_set_transform(p + Vector2(0, bob).rotated(up), rot, Vector2(grow, grow))
 	var hue := fposmod(_t * 0.25 + phase * 0.1, 1.0)
 	draw_rect(Rect2(-15, -15, 30, 30), OUTLINE)
 	draw_rect(Rect2(-12, -12, 24, 24), Color.from_hsv(hue, 0.7, 1.0))
 	draw_rect(Rect2(-8, -8, 16, 16), Color.from_hsv(hue, 0.35, 1.0))
-	draw_set_transform(p + Vector2(0, bob).rotated(up), up)
+	draw_set_transform(p + Vector2(0, bob).rotated(up), up, Vector2(grow, grow))
 	draw_string(ThemeDB.fallback_font, Vector2(-10, 8), "?", HORIZONTAL_ALIGNMENT_CENTER, 20, 22, OUTLINE)
 	draw_set_transform(Vector2.ZERO)
 
@@ -372,6 +387,8 @@ static func draw_item_icon(ci: CanvasItem, item: String, k: float) -> void:
 
 func _draw_glow(ci: CanvasItem) -> void:
 	for spot in _spots:
+		if not active:
+			break
 		var boxes: Array[float] = spot.boxes
 		for i in boxes.size():
 			if boxes[i] > 0.0:

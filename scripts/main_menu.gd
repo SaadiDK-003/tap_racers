@@ -360,7 +360,7 @@ func _refresh_controls() -> void:
 			cpu_style.content_margin_top = 4
 			cpu_style.content_margin_bottom = 4
 			cpu_chip.add_theme_stylebox_override("panel", cpu_style)
-			cpu_chip.add_child(_label("CPU %s   %s driver   (%s)" % [Game.PLAYER_NAMES[i], Game.CPU_LEVELS[Game.cpu_level].to_lower(), corners[i]], 21, 4, Game.PLAYER_COLORS[i].lightened(0.1)))
+			cpu_chip.add_child(_label("CPU rival   %s   (%s)" % [Game.CPU_LEVELS[Game.cpu_level].to_lower(), corners[i]], 21, 4, Game.PLAYER_COLORS[i].lightened(0.1)))
 			_controls_box.add_child(cpu_chip)
 			continue
 		var how := "hold your corner" if Game.is_touch() else "hold  %s" % Game.key_label(i)

@@ -15,6 +15,8 @@ var _puffs: Array[Dictionary] = []
 var _sparks: Array[Dictionary] = []
 var _waves: Array[Dictionary] = []
 var _bolts: Array[Dictionary] = [] # lightning strikes {car, t, seed}
+var _bubbles: Array[Dictionary] = [] # CPU speech bubbles {car, text, t}
+const BUBBLE_TIME := 2.2
 var _skids := PackedVector2Array()
 var _glow_layer: Node2D
 var _font: FontVariation
@@ -52,6 +54,12 @@ func burst(p: Vector2, car_color: Color) -> void:
 	for i in 22:
 		var c := Color(1.0, 0.75, 0.3) if i % 3 != 0 else car_color
 		_sparks.append({"p": p, "v": Vector2.from_angle(randf() * TAU) * randf_range(160, 420), "t": 0.0, "life": randf_range(0.3, 0.6), "c": c})
+
+
+## Speech bubble above a car (CPU driver chatter).
+func say(car, text: String) -> void:
+	_bubbles = _bubbles.filter(func(b): return b.car != car)
+	_bubbles.append({"car": car, "text": text, "t": 0.0})
 
 
 ## A lightning bolt striking down onto a car.
@@ -124,6 +132,9 @@ func _process(delta: float) -> void:
 	for b in _bolts:
 		b.t += delta
 	_bolts = _bolts.filter(func(b): return b.t < 0.4)
+	for b in _bubbles:
+		b.t += delta
+	_bubbles = _bubbles.filter(func(b): return b.t < BUBBLE_TIME)
 	for w in _waves:
 		w.t += delta
 	_waves = _waves.filter(func(w): return w.t < 0.45)
@@ -170,12 +181,36 @@ func _draw() -> void:
 		var pop := 1.0 + 0.6 * _crown_pop
 		draw_set_transform(_crown_pos() + Vector2(0, bob).rotated(up), up + sin(_time * 3.0) * 0.08, Vector2(pop, pop))
 		_draw_crown(_crown_alpha())
+	for b in _bubbles:
+		_draw_bubble(b, up)
+	draw_set_transform(Vector2.ZERO)
 	if show_tags:
 		for car in cars:
 			draw_set_transform(car.position + Vector2(0, -35).rotated(up), up)
 			draw_rect(Rect2(-16, -9, 32, 18), Color(car.color, 0.95))
 			draw_string(_font, Vector2(-16, 5), "P%d" % (car.index + 1), HORIZONTAL_ALIGNMENT_CENTER, 32, 14, Color(0.05, 0.05, 0.08))
 	draw_set_transform(Vector2.ZERO)
+
+
+func _draw_bubble(b: Dictionary, up: float) -> void:
+	var car = b.car
+	var t: float = b.t
+	var a := clampf(minf(t / 0.12, (BUBBLE_TIME - t) / 0.3), 0.0, 1.0)
+	var pop := 0.8 + 0.2 * minf(1.0, t / 0.12)
+	var text: String = b.text
+	var fs := 13
+	var w := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 16.0
+	var h := 22.0
+	draw_set_transform(car.position + Vector2(0, -44).rotated(up), up, Vector2(pop, pop))
+	var box := Rect2(-w * 0.5, -h, w, h)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(1, 1, 1, 0.95 * a)
+	style.set_corner_radius_all(10)
+	style.border_color = Color(car.color.darkened(0.2), a)
+	style.set_border_width_all(2)
+	draw_style_box(style, box)
+	draw_colored_polygon(PackedVector2Array([Vector2(-5, -1), Vector2(5, -1), Vector2(0, 7)]), Color(1, 1, 1, 0.95 * a))
+	draw_string(_font, Vector2(-w * 0.5, -6), text, HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(0.08, 0.08, 0.12, a))
 
 
 func _crown_visible() -> bool:

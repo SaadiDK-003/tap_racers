@@ -29,6 +29,8 @@ const PLAYER_COLORS := [
 const PLAYER_KEYS := [[KEY_L], [KEY_A], [KEY_V], [KEY_UP]]
 
 # Map registry: add a new map script here and it joins the random rotation.
+const Drivers = preload("res://scripts/drivers.gd")
+
 const MAPS := [
 	preload("res://maps/sunset_speedway.gd"),
 	preload("res://maps/canyon_hairpins.gd"),
@@ -58,6 +60,7 @@ var cup_race := 0 # races finished so far
 var cup_points: Array[int] = [0, 0, 0, 0]
 var cup_wins: Array[int] = [0, 0, 0, 0]
 var cup_last_place: Array[int] = [0, 0, 0, 0]
+var cpu_drivers: Array = [] # personality for each car slot that is a CPU (null for humans)
 
 var _last_map := -1
 var current_map := -1 # index of the map being raced
@@ -245,7 +248,28 @@ func is_cpu(i: int) -> bool:
 
 
 func racer_name(i: int) -> String:
-	return ("CPU " if is_cpu(i) else "P%d " % (i + 1)) + PLAYER_NAMES[i]
+	if is_cpu(i):
+		return driver(i).name
+	return "P%d %s" % [i + 1, PLAYER_NAMES[i]]
+
+
+## Short name for pop-ups: "P2", or a CPU driver's name.
+func short_name(i: int) -> String:
+	return driver(i).name if is_cpu(i) else "P%d" % (i + 1)
+
+
+## The CPU personality in slot `i` (the same one for a whole championship).
+func driver(i: int) -> Dictionary:
+	if cpu_drivers.size() < MAX_PLAYERS or cpu_drivers[i] == null:
+		_assign_drivers()
+	return cpu_drivers[i]
+
+
+func _assign_drivers() -> void:
+	var picks := Drivers.pick(MAX_PLAYERS)
+	cpu_drivers = []
+	for i in MAX_PLAYERS:
+		cpu_drivers.append(picks[i])
 
 
 func is_championship() -> bool:
@@ -254,6 +278,7 @@ func is_championship() -> bool:
 
 ## Starts a fresh championship (or single race) with the current settings.
 func start_cup() -> void:
+	_assign_drivers() # new rivals for every championship / single race
 	cup_race = 0
 	for i in MAX_PLAYERS:
 		cup_points[i] = 0
