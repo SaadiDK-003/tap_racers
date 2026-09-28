@@ -367,6 +367,7 @@ func _parse_debug_args() -> void:
 			"podium": debug_podium = true
 			"scene": debug_scene = value
 			"garage_tab": set_meta("garage_tab", value.to_int())
+			"menu_panel": set_meta("menu_panel", value)
 			"coins": debug_coins = value.to_int()
 			"laps": laps = maxi(1, value.to_int())
 			"map": debug_map = value.to_int()

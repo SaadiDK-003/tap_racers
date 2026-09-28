@@ -2,6 +2,11 @@
 
 Local multiplayer (2–4 players) one-button slot-car racing for mobile and desktop, built with Godot 4.7.
 
+## Menu
+- **Home:** a big **PLAY** button with a one-line summary of your race settings, **RACE SETUP**, Garage, Records, Awards, How to Play, and the daily challenge. The gear in the top corner opens Settings.
+- **Race setup:** players, CPU rivals and level, races, laps, items and weather, plus who's on the grid (with the CPU drivers' names).
+- **Settings:** sound, music and fullscreen (fullscreen is desktop only).
+
 ## Modes
 - **Players and CPU rivals:** 1–4 human players, with CPU rivals filling the grid up to 4 cars. A single player always gets at least one CPU. CPU level is Easy, Normal or Hard.
 - **Races:** *Single* race, or a *Cup* of 3 or 5 races on random tracks with no repeats. Points are 10 / 6 / 3 / 1, and standings show after each race. The Cup ends on a podium with a trophy.
@@ -126,6 +131,7 @@ godot --path . -- --race --players=4 --map=1 --laps=2 --bots
 ```
 - `--players=1 --cpus=3 --cpu_level=2 --races=3` sets up a race against CPUs. `--log` prints lap times, and `--podium` jumps to a sample Cup podium.
 - `--weather=rain` (or `clear` / `night` / `random`) and `--items=off` set the weather and turn power-ups off.
+- `--menu_panel=setup` (or `settings`) opens that menu panel directly.
 - `--scene=garage` (or `records`; `--garage_tab=2` opens the trail tab) opens that screen directly, and `--coins=500` sets the coin balance for testing.
 - `--tutorial` starts the tutorial, `--races=0` starts a time trial, and `--autopilot` lets the bot drive P1 while still saving results.
 - `--bots` makes the computer drive every car well. `--bots=reckless` never brakes (to test crashes).

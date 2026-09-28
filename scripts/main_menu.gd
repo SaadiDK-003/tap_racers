@@ -13,6 +13,10 @@ var _demo: RaceWorld
 var _sound_button: Button
 var _music_button: Button
 var _landscape := false
+var _play_button: Button
+var _summary: Label
+var _setup: Control # race setup panel (options + players)
+var _settings: Control # sound / music / fullscreen panel
 
 
 func _ready() -> void:
@@ -49,30 +53,42 @@ func _ready() -> void:
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(shade)
 
+	_landscape = Game.is_landscape_layout()
+	_build_home()
+	_build_setup()
+	_build_settings()
+	if Game.has_meta("menu_panel"): # debug: --menu_panel=setup / settings
+		_show(_setup if Game.get_meta("menu_panel") == "setup" else _settings, true)
+		Game.remove_meta("menu_panel")
+
+	var badge := CoinBadge.new()
+	add_child(badge)
+	badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	badge.position = Vector2(get_viewport_rect().size.x - 190, 16)
+	get_viewport().size_changed.connect(func(): badge.position = Vector2(get_viewport_rect().size.x - 190, 16))
+	_play_button.grab_focus()
+	get_viewport().size_changed.connect(_on_resized)
+	if not Profile.data.tutorial_done and not bool(Profile.setting("tutorial_offered", false)) and not Game.debug_skip_menu:
+		_offer_tutorial()
+
+
+# --- Home screen ---------------------------------------------------------------
+
+## Home: title, PLAY, a one-line summary of the race settings, RACE SETUP, four
+## menu buttons and the daily challenge. Options live in the setup panel.
+func _build_home() -> void:
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
-	# Portrait: one column. Landscape: title + start on the left, options on the right.
-	_landscape = Game.is_landscape_layout()
 	var main: BoxContainer = HBoxContainer.new() if _landscape else VBoxContainer.new()
-	main.add_theme_constant_override("separation", 30 if _landscape else 18)
+	main.add_theme_constant_override("separation", 60 if _landscape else 26)
 	center.add_child(main)
-	var top := _column()
-	var options := _column()
-	var actions := _column()
-	if _landscape:
-		var left := _column()
-		left.alignment = BoxContainer.ALIGNMENT_CENTER
-		left.add_theme_constant_override("separation", 30)
-		left.add_child(top)
-		left.add_child(actions)
-		main.add_child(left)
-		main.add_child(options)
-	else:
-		main.add_child(top)
-		main.add_child(options)
-		main.add_child(actions)
-	var box := top
+	var left := _column()
+	left.alignment = BoxContainer.ALIGNMENT_CENTER
+	main.add_child(left)
+	var right := _column()
+	right.alignment = BoxContainer.ALIGNMENT_CENTER
+	main.add_child(right)
 
 	var title := HBoxContainer.new()
 	title.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -81,103 +97,189 @@ func _ready() -> void:
 	logo.texture = load("res://assets/logo.png")
 	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	var title_size := 76 if _landscape else 92
+	var title_size := 76 if _landscape else 84
 	logo.custom_minimum_size = Vector2(title_size, title_size)
 	title.add_child(logo)
 	title.add_child(_label("TAP", title_size, 14))
 	title.add_child(_label("RACERS", title_size, 14, Game.ACCENT))
-	box.add_child(title)
-	box.add_child(_label("Hold to go  •  Let go to brake\nNitro full? Double-tap for a boost!", 24, 6, Color(1, 1, 1, 0.85)))
+	left.add_child(title)
+	left.add_child(_label("Hold to go  •  Let go to brake\nNitro full? Double-tap for a boost!", 22, 6, Color(1, 1, 1, 0.8)))
+	left.add_child(_spacer(6))
 
-	box = options
-	box.add_theme_constant_override("separation", 8)
-	if _landscape:
-		box.add_child(_spacer(44)) # room for the coin counter in the corner
-	box.add_child(_option_row("PLAYERS", [1, 2, 3, 4], ["1", "2", "3", "4"], Game.num_players, _pick_players))
+	_play_button = _big_button("PLAY", _start, Vector2(460, 110), 46)
+	left.add_child(_center_wrap(_play_button))
+	_play_button.pivot_offset = _play_button.custom_minimum_size * 0.5
+	var pulse := create_tween().set_loops()
+	pulse.tween_property(_play_button, "scale", Vector2(1.04, 1.04), 0.6).set_trans(Tween.TRANS_SINE)
+	pulse.tween_property(_play_button, "scale", Vector2.ONE, 0.6).set_trans(Tween.TRANS_SINE)
+	_summary = _label("", 19, 4, Color(1, 1, 1, 0.75))
+	left.add_child(_summary)
+	var setup_b := _menu_button("RACE SETUP", func(): _show(_setup, true), Vector2(460, 70))
+	left.add_child(_center_wrap(setup_b))
+	_update_summary()
+
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 14)
+	for item in [["GARAGE", "res://scenes/garage.tscn"], ["RECORDS", "res://scenes/records.tscn"], ["AWARDS", "res://scenes/awards.tscn"], ["HOW TO PLAY", ""]]:
+		var target: String = item[1]
+		var b := _menu_button(item[0], func():
+			if target == "":
+				_start_tutorial()
+			else:
+				Game.save_settings()
+				get_tree().change_scene_to_file(target), Vector2(223, 76))
+		grid.add_child(b)
+	right.add_child(_center_wrap(grid))
+	right.add_child(_daily_chip())
+
+	# Settings gear in the top-left corner (the coin counter sits top-right).
+	var gear := Button.new()
+	gear.custom_minimum_size = Vector2(60, 60)
+	gear.position = Vector2(16, 16)
+	gear.focus_mode = Control.FOCUS_NONE
+	gear.add_theme_stylebox_override("normal", Game.make_style(Color(0.08, 0.09, 0.13, 0.9), 30, Color(0.02, 0.03, 0.05), 4))
+	gear.add_theme_stylebox_override("hover", Game.make_style(Color(0.16, 0.18, 0.24, 0.95), 30, Color(0.02, 0.03, 0.05), 4))
+	gear.draw.connect(func(): _draw_gear(gear))
+	gear.pressed.connect(func(): _show(_settings, true))
+	add_child(gear)
+
+
+func _draw_gear(ci: Control) -> void:
+	var c := ci.size * 0.5
+	var col := Color(0.85, 0.88, 0.95)
+	for k in 8:
+		var d := Vector2.from_angle(k * TAU / 8.0)
+		ci.draw_line(c + d * 9.0, c + d * 16.0, col, 6.0)
+	ci.draw_circle(c, 12.0, col)
+	ci.draw_circle(c, 5.0, Color(0.08, 0.09, 0.13))
+
+
+func _update_summary() -> void:
+	var parts: Array[String] = []
+	if Game.is_trial():
+		parts = ["TIME TRIAL", "%d LAPS" % Game.laps]
+	else:
+		parts.append("%d PLAYER%s" % [Game.num_players, "" if Game.num_players == 1 else "S"])
+		if Game.num_cpus > 0:
+			parts.append("%d CPU (%s)" % [Game.num_cpus, Game.CPU_LEVELS[Game.cpu_level]])
+		parts.append("SINGLE RACE" if Game.races == 1 else "CUP OF %d" % Game.races)
+		parts.append("%d LAPS" % Game.laps)
+	if not Game.items_on and not Game.is_trial():
+		parts.append("NO ITEMS")
+	if Game.weather_mode != 0:
+		parts.append(Game.WEATHER_MODES[Game.weather_mode])
+	_summary.text = "  •  ".join(parts)
+
+
+# --- Race setup panel -------------------------------------------------------------
+
+func _build_setup() -> void:
+	var content := _panel_overlay()
+	_setup = content.get_meta("overlay")
+	var cols: BoxContainer = HBoxContainer.new() if _landscape else VBoxContainer.new()
+	cols.add_theme_constant_override("separation", 40 if _landscape else 14)
+	var left := _column()
+	left.add_theme_constant_override("separation", 8)
+	var right := _column()
+	right.add_theme_constant_override("separation", 10)
+	right.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.add_child(_label("RACE SETUP", 40, 8, Game.ACCENT))
+	content.add_child(cols)
+	cols.add_child(left)
+	cols.add_child(right)
+	left.add_child(_option_row("PLAYERS", [1, 2, 3, 4], ["1", "2", "3", "4"], Game.num_players, _pick_players))
 	var cpu_row := _option_row("CPU RIVALS", [0, 1, 2, 3], ["0", "1", "2", "3"], Game.num_cpus, _pick_cpus)
 	_cpu_buttons = _last_row_buttons
-	box.add_child(cpu_row)
-	box.add_child(_option_row("CPU LEVEL", [0, 1, 2], Game.CPU_LEVELS, Game.cpu_level, func(v): Game.cpu_level = v; _refresh_controls()))
+	left.add_child(cpu_row)
+	left.add_child(_option_row("CPU LEVEL", [0, 1, 2], Game.CPU_LEVELS, Game.cpu_level, func(v): Game.cpu_level = v; _refresh_controls()))
 	_level_buttons = _last_row_buttons
-	box.add_child(_option_row("RACES", Game.RACE_OPTIONS, ["SINGLE", "CUP 3", "CUP 5", "TRIAL"], Game.races, func(v): Game.races = v; _refresh_controls()))
-	box.add_child(_option_row("LAPS", Game.LAP_OPTIONS, ["5", "6"], Game.laps, func(v): Game.laps = v))
-	box.add_child(_option_row("ITEMS", [1, 0], ["ON", "OFF"], 1 if Game.items_on else 0, func(v): Game.items_on = v == 1))
-	box.add_child(_option_row("WEATHER", [0, 1, 2, 3], Game.WEATHER_MODES, Game.weather_mode, func(v): Game.weather_mode = v))
-	box.add_child(_spacer(4))
-
+	left.add_child(_option_row("RACES", Game.RACE_OPTIONS, ["SINGLE", "CUP 3", "CUP 5", "TRIAL"], Game.races, func(v): Game.races = v; _refresh_controls()))
+	left.add_child(_option_row("LAPS", Game.LAP_OPTIONS, ["5", "6"], Game.laps, func(v): Game.laps = v))
+	left.add_child(_option_row("ITEMS", [1, 0], ["ON", "OFF"], 1 if Game.items_on else 0, func(v): Game.items_on = v == 1))
+	left.add_child(_option_row("WEATHER", [0, 1, 2, 3], Game.WEATHER_MODES, Game.weather_mode, func(v): Game.weather_mode = v))
 	_controls_box = VBoxContainer.new()
 	_controls_box.add_theme_constant_override("separation", 8)
-	box.add_child(_controls_box)
+	right.add_child(_label("ON THE GRID", 18, 4, Color(1, 1, 1, 0.6)))
+	right.add_child(_controls_box)
+	right.add_child(_spacer(6))
+	right.add_child(_center_wrap(_big_button("START RACE", _start, Vector2(420, 88), 34)))
+	right.add_child(_center_wrap(_menu_button("DONE", func(): _show(_setup, false), Vector2(420, 62))))
 	_fix_cpu_count()
 	_refresh_controls()
 
-	box = actions
-	var start := Button.new()
-	start.text = "START RACE"
-	start.custom_minimum_size = Vector2(460, 104)
-	start.add_theme_font_size_override("font_size", 40)
-	start.add_theme_stylebox_override("normal", Game.make_style(Game.ACCENT, 22, Color(0.02, 0.03, 0.05), 6))
-	start.add_theme_stylebox_override("hover", Game.make_style(Game.ACCENT.lightened(0.12), 22, Color(0.02, 0.03, 0.05), 6))
-	start.add_theme_stylebox_override("pressed", Game.make_style(Game.ACCENT.darkened(0.15), 22, Color(0.02, 0.03, 0.05), 6))
-	start.pressed.connect(_start)
-	box.add_child(start)
-	start.pivot_offset = start.custom_minimum_size * 0.5
-	var pulse := create_tween().set_loops()
-	pulse.tween_property(start, "scale", Vector2(1.04, 1.04), 0.6).set_trans(Tween.TRANS_SINE)
-	pulse.tween_property(start, "scale", Vector2.ONE, 0.6).set_trans(Tween.TRANS_SINE)
 
-	_sound_button = Button.new()
-	_sound_button.custom_minimum_size = Vector2(180, 58)
-	_sound_button.add_theme_font_size_override("font_size", 22)
-	_sound_button.pressed.connect(_toggle_sound)
-	_update_sound_button()
-	var sound_row := HBoxContainer.new()
-	sound_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	sound_row.add_theme_constant_override("separation", 14)
-	sound_row.add_child(_sound_button)
-	_music_button = Button.new()
-	_music_button.custom_minimum_size = Vector2(180, 58)
-	_music_button.add_theme_font_size_override("font_size", 22)
-	_music_button.pressed.connect(_toggle_music)
-	sound_row.add_child(_music_button)
-	_update_sound_button()
+# --- Settings panel -----------------------------------------------------------------
+
+func _build_settings() -> void:
+	var content := _panel_overlay()
+	_settings = content.get_meta("overlay")
+	content.add_child(_label("SETTINGS", 40, 8, Game.ACCENT))
+	_sound_button = _menu_button("", _toggle_sound, Vector2(380, 70))
+	_music_button = _menu_button("", _toggle_music, Vector2(380, 70))
+	content.add_child(_center_wrap(_sound_button))
+	content.add_child(_center_wrap(_music_button))
 	if not OS.has_feature("mobile"):
-		var fs := Button.new()
-		fs.text = "FULLSCREEN"
-		fs.custom_minimum_size = Vector2(180, 58)
-		fs.add_theme_font_size_override("font_size", 22)
-		fs.pressed.connect(Game.toggle_fullscreen)
-		sound_row.add_child(fs)
-	box.add_child(sound_row)
+		content.add_child(_center_wrap(_menu_button("FULLSCREEN", Game.toggle_fullscreen, Vector2(380, 70))))
+	content.add_child(_center_wrap(_menu_button("CLOSE", func(): _show(_settings, false), Vector2(380, 62))))
+	_update_sound_button()
 
-	var extra_row := HBoxContainer.new()
-	extra_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	extra_row.add_theme_constant_override("separation", 14)
-	var how := Button.new()
-	how.text = "HOW TO PLAY"
-	how.custom_minimum_size = Vector2(150, 58)
-	how.add_theme_font_size_override("font_size", 19)
-	how.pressed.connect(_start_tutorial)
-	extra_row.add_child(how)
-	for pair in [["GARAGE", "res://scenes/garage.tscn"], ["RECORDS", "res://scenes/records.tscn"], ["AWARDS", "res://scenes/awards.tscn"]]:
-		var b := Button.new()
-		b.text = pair[0]
-		b.custom_minimum_size = Vector2(130, 58)
-		b.add_theme_font_size_override("font_size", 19)
-		b.pressed.connect(func(): Game.save_settings(); get_tree().change_scene_to_file(pair[1]))
-		extra_row.add_child(b)
-	box.add_child(extra_row)
-	box.add_child(_daily_chip())
 
-	var badge := CoinBadge.new()
-	add_child(badge)
-	badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	badge.position = Vector2(get_viewport_rect().size.x - 190, 16)
-	get_viewport().size_changed.connect(func(): badge.position = Vector2(get_viewport_rect().size.x - 190, 16))
-	start.grab_focus()
-	get_viewport().size_changed.connect(_on_resized)
-	if not Profile.data.tutorial_done and not bool(Profile.setting("tutorial_offered", false)) and not Game.debug_skip_menu:
-		_offer_tutorial()
+## A dimmed full-screen overlay with a centred panel; returns the panel's content box
+## (the overlay itself is stored in its "overlay" meta). Starts hidden.
+func _panel_overlay() -> VBoxContainer:
+	var overlay := ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.6)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.visible = false
+	add_child(overlay)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(center)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", Game.make_style(Color(0.07, 0.08, 0.12, 0.97), 26, Color(0.02, 0.03, 0.05), 5))
+	center.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 14)
+	panel.add_child(v)
+	v.set_meta("overlay", overlay)
+	return v
+
+
+func _show(panel: Control, on: bool) -> void:
+	panel.visible = on
+	Sfx.play(Sfx.beep, -10.0, 1.2 if on else 0.9)
+	if not on:
+		Game.save_settings()
+		_update_summary()
+
+
+func _big_button(text: String, fn: Callable, size: Vector2, font: int) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = size
+	b.add_theme_font_size_override("font_size", font)
+	b.add_theme_stylebox_override("normal", Game.make_style(Game.ACCENT, 22, Color(0.02, 0.03, 0.05), 6))
+	b.add_theme_stylebox_override("hover", Game.make_style(Game.ACCENT.lightened(0.12), 22, Color(0.02, 0.03, 0.05), 6))
+	b.add_theme_stylebox_override("pressed", Game.make_style(Game.ACCENT.darkened(0.15), 22, Color(0.02, 0.03, 0.05), 6))
+	b.pressed.connect(fn)
+	return b
+
+
+func _menu_button(text: String, fn: Callable, size: Vector2) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = size
+	b.add_theme_font_size_override("font_size", 22)
+	b.pressed.connect(fn)
+	return b
+
+
+func _center_wrap(c: Control) -> CenterContainer:
+	var w := CenterContainer.new()
+	w.add_child(c)
+	return w
 
 
 func _on_resized() -> void:
@@ -340,7 +442,8 @@ func _toggle_music() -> void:
 
 
 func _update_sound_button() -> void:
-	_sound_button.text = "SOUND: ON" if Sfx.enabled else "SOUND: OFF"
+	if _sound_button:
+		_sound_button.text = "SOUND: ON" if Sfx.enabled else "SOUND: OFF"
 	if _music_button:
 		_music_button.text = "MUSIC: ON" if Sfx.music_enabled else "MUSIC: OFF"
 
@@ -360,7 +463,7 @@ func _refresh_controls() -> void:
 			cpu_style.content_margin_top = 4
 			cpu_style.content_margin_bottom = 4
 			cpu_chip.add_theme_stylebox_override("panel", cpu_style)
-			cpu_chip.add_child(_label("CPU rival   %s   (%s)" % [Game.CPU_LEVELS[Game.cpu_level].to_lower(), corners[i]], 21, 4, Game.PLAYER_COLORS[i].lightened(0.1)))
+			cpu_chip.add_child(_label("%s   CPU %s   (%s)" % [Game.driver(i).name, Game.CPU_LEVELS[Game.cpu_level].to_lower(), corners[i]], 21, 4, Game.PLAYER_COLORS[i].lightened(0.1)))
 			_controls_box.add_child(cpu_chip)
 			continue
 		var how := "hold your corner" if Game.is_touch() else "hold  %s" % Game.key_label(i)
