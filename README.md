@@ -10,6 +10,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 ## Modes
 - **Players and CPU rivals:** 1–4 human players, with CPU rivals filling the grid up to 4 cars. A single player always gets at least one CPU. CPU level is Easy, Normal or Hard.
 - **Career:** 10 solo events on set tracks against named CPU rivals, from Rookie Run (Easy) to Blaze's Final (Hard, 6 laps). Each event has fixed laps, weather and items, and pays up to 3 stars: a podium finish (which unlocks the next event), a win, and the event's goal (e.g. no crashes, 3 nitros, 3 close calls, an item hit, a perfect lap, or winning by 2 seconds). Every new star pays 25 coins. Your own race settings come back when you leave career.
+- **Win streak king:** a human who wins 2 races in a row becomes KING, with a crown and win count on their pad, and the start banner names them. Each further win pays the king 15 coins, and another human who beats the king gets 40. A CPU win ends the streak. It carries over REMATCH, NEW TRACK and Cup races, and resets on the main menu.
 - **Rematch:** after a single race, REMATCH replays the same track, and NEW TRACK picks a random one.
 - **Races:** *Single* race, or a *Cup* of 3 or 5 races on random tracks with no repeats. Points are 10 / 6 / 3 / 1, and standings show after each race. The Cup ends on a podium with a trophy.
 - **CPU drivers:** each race picks CPU rivals from 8 personalities: Blaze, Captain Crash, Granny Speed, Turbo Tina, Professor Pit, Rookie Ray, Duchess and Zippy. Their name shows on their pad and in the results, and now and then they say something in a speech bubble when they start, overtake, take the lead, get hit, crash or win.
@@ -140,6 +141,7 @@ godot --path . -- --race --players=4 --map=1 --laps=2 --bots
 - `--weather=rain` (or `clear` / `night` / `random`) and `--items=off` set the weather and turn power-ups off.
 - `--menu_panel=setup` (or `settings`) opens that menu panel directly.
 - `--scene=garage` (or `records`; `--garage_tab=2` opens the trail tab) opens that screen directly, and `--coins=500` sets the coin balance for testing.
+- `--streak=2,3` makes P2 the king with 3 wins in a row.
 - `--race --career=3` races career event 4 (numbered from 0).
 - `--tutorial` starts the tutorial, `--races=0` starts a time trial, and `--autopilot` lets the bot drive P1 while still saving results.
 - `--bots` makes the computer drive every car well. `--bots=coast` makes them let go before a jump, to test splashes. `--bots=reckless` never brakes (to test crashes).

@@ -51,6 +51,7 @@ func _ready() -> void:
 		_start.call_deferred()
 		return
 	Game.load_settings()
+	Game.reset_streak() # a streak is a run of races in one sitting
 	theme = Game.make_theme()
 	Sfx.play_music("menu")
 	_build_demo()

@@ -30,7 +30,7 @@
 - [x] **Rematch:** a REMATCH button after a race (same track). The head-start handicap was dropped.
 - [x] **Track intro sweep:** a 2-second camera sweep over the track before the start lights.
 - [x] **Career mode:** 10 events against named CPU drivers, with 1–3 stars each (podium, win, goal), coins for new stars, and CAREER STAR / SUPERSTAR awards.
-- [ ] **Win streak "king":** a crown on the pad of whoever won twice in a row, and bonus coins for beating them.
+- [x] **Win streak "king":** a crown on the pad of whoever won twice in a row, +15 coins per streak win, and +40 for beating them.
 - [ ] **Race replay:** a slow-motion replay of the best moment (photo finish, rocket hit, splash).
 - [ ] **Haptics pass:** stronger crash/splash vibration, and a light pulse when nitro is ready.
 - [ ] **Per-body engine sounds:** kart buzz, muscle rumble, hover hum.

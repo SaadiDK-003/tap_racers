@@ -60,6 +60,10 @@ const WEATHER_MODES := ["RANDOM", "CLEAR", "RAIN", "NIGHT"]
 var tutorial := false # the guided "how to play" race
 var career_event := -1 # >= 0 while racing a career event
 var _career_backup := {} # the player's own race settings, restored after career
+var streak_player := -1 # human on a run of wins in a row (a king from 2 wins)
+var streak_wins := 0
+const KING_SLAYER_COINS := 40 # for the human who beats the king
+const STREAK_COINS := 15 # for the king, every win from the 2nd in a row
 var retry_map := -1 # race this map again instead of a random one (time trial retry, rematch)
 
 # Championship state.
@@ -380,6 +384,39 @@ func end_career() -> void:
 	_career_backup = {}
 
 
+## The racer with 2+ wins in a row, or -1. Only human streaks count: CPU rivals
+## change between races.
+func king() -> int:
+	return streak_player if streak_wins >= 2 else -1
+
+
+func reset_streak() -> void:
+	streak_player = -1
+	streak_wins = 0
+
+
+## Updates the win streak after a race. Returns {king_before, winner, streak,
+## slain: bool (a human beat the king), coins}.
+func note_winner(winner: int) -> Dictionary:
+	var out := {"king_before": king(), "winner": winner, "streak": 0, "slain": false, "coins": 0}
+	if is_career() or tutorial or is_trial():
+		return out
+	if is_cpu(winner):
+		reset_streak()
+	elif winner == streak_player:
+		streak_wins += 1
+	else:
+		streak_player = winner
+		streak_wins = 1
+	out.streak = streak_wins if not is_cpu(winner) else 0
+	if int(out.king_before) >= 0 and int(out.king_before) != winner and not is_cpu(winner):
+		out.slain = true
+		out.coins = KING_SLAYER_COINS
+	elif int(out.streak) >= 2:
+		out.coins = STREAK_COINS
+	return out
+
+
 func is_championship() -> bool:
 	return races > 1 and not tutorial
 
@@ -488,6 +525,10 @@ func _parse_debug_args() -> void:
 				debug_reckless = value == "reckless"
 				debug_coast = value == "coast" # lets go before the jump ramp (tests splashes)
 			"race": debug_skip_menu = true
+			"streak": # --streak=2,3: P2 is king with 3 wins in a row
+				var v := value.split(",")
+				streak_player = v[0].to_int() - 1
+				streak_wins = v[1].to_int() if v.size() > 1 else 2
 			"career": set_meta("career", value.to_int()) # with --race: race career event N
 			"shot":
 				debug_shot = value

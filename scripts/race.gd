@@ -120,6 +120,11 @@ func _ready() -> void:
 		_sub_label.text += "\nNIGHT RACE"
 	if Game.is_championship():
 		_sub_label.text = "RACE %d OF %d\n%s" % [Game.cup_race + 1, Game.races, _sub_label.text]
+	var king := Game.king()
+	if king >= 0 and king < cars.size() and not Game.is_career():
+		_sub_label.text += "\nKING: %s  •  %d WINS IN A ROW" % [Game.racer_name(king), Game.streak_wins]
+		if Game.num_players > 1:
+			_sub_label.text += "\nBEAT THEM FOR +%d COINS!" % Game.KING_SLAYER_COINS
 	if Game.is_career():
 		var e: Dictionary = CE.event(Game.career_event)
 		_sub_label.text = "EVENT %d  •  %s\n%s\nGOAL: %s" % [Game.career_event + 1, e.title, _sub_label.text, CE.goal_text(Game.career_event)]
@@ -727,6 +732,8 @@ func _build_ui() -> void:
 	pads.num_players = cars.size()
 	pads.humans = mini(Game.num_players, cars.size()) if not Game.debug_bots else 0
 	pads.laps = Game.race_laps()
+	pads.king = Game.king() if not Game.is_career() else -1
+	pads.king_wins = Game.streak_wins
 	pads.cars = cars
 	pads.track_length = world.track.length
 	pads.pause_pressed.connect(_toggle_pause)
@@ -873,6 +880,9 @@ func _show_results() -> void:
 	title.add_theme_color_override("font_color", winner.color)
 	box.add_child(title)
 	var rewards := _record_profile(order)
+	var streak := _streak_line(winner.index)
+	if streak != "":
+		rewards = streak + ("  •  " + rewards if rewards != "" else "")
 	if rewards != "":
 		var r := _wrap_label(rewards)
 		r.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
@@ -953,6 +963,22 @@ func _show_results() -> void:
 	await get_tree().create_timer(1.2).timeout
 	for b in buttons:
 		b.disabled = false
+
+
+## Updates the win streak and pays its coins; returns what to announce.
+func _streak_line(winner: int) -> String:
+	var r := Game.note_winner(winner)
+	if int(r.coins) > 0 and not Game.debug_bots:
+		Profile.add_coins(int(r.coins))
+		Profile.save()
+	var king_before: int = r.king_before
+	if r.slain:
+		return "%s BEAT THE KING! +%d COINS" % [Game.racer_name(winner), int(r.coins)]
+	if int(r.streak) >= 2:
+		return "%s IS KING! %d WINS IN A ROW +%d COINS" % [Game.racer_name(winner), int(r.streak), int(r.coins)]
+	if king_before >= 0 and king_before != winner:
+		return "%s'S STREAK IS OVER" % Game.racer_name(king_before)
+	return ""
 
 
 ## Saves stats / records / coins for the human players; returns a one-line summary.

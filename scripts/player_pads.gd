@@ -28,6 +28,8 @@ const CORNERS := [Vector2(1, 1), Vector2(0, 0), Vector2(0, 1), Vector2(1, 0)]
 var num_players := 2 # cars (each gets a pad)
 var humans := 2 # the first `humans` pads are real players; the rest are CPUs
 var laps := 5
+var king := -1 # racer on a win streak: gets a crown on their pad
+var king_wins := 0
 var cars: Array = [] # read every frame for speed / nitro / lap progress
 var track_length := 1.0
 
@@ -357,6 +359,9 @@ func _draw_pad(i: int) -> void:
 			draw_string(_font, Vector2(-RADIUS, -20), "NITRO!" if boosting else "TAP TAP!", HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 16, Color(1, 1, 1, 0.95))
 		draw_string(_font, Vector2(-RADIUS, 12), Game.key_label(i), HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 32, Color(1, 1, 1, 0.95))
 
+	if i == king:
+		_draw_king(c, landscape, toward, inward, rot)
+
 	# Pill contents: LAP x/y, lap progress bar and the position badge.
 	var fit := minf(1.0, pill_len / (PILL_LEN + 14.0)) if pill_len < PILL_LEN else 1.0
 	if landscape:
@@ -399,6 +404,30 @@ func _draw_pad(i: int) -> void:
 	draw_style_box(_badge_style, badge)
 	draw_string(_font, badge.position + Vector2(0, 28), str(place), HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, 26, OUTLINE)
 	draw_string(_font, badge.position + Vector2(0, 40), SUFFIX[clampi(place - 1, 0, 3)], HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, 10, OUTLINE)
+	draw_set_transform(Vector2.ZERO)
+
+
+## Crown on the rim of the king's button, on the side away from the pill, with
+## the number of wins in a row.
+func _draw_king(c: Vector2, landscape: bool, toward: float, inward: float, rot: float) -> void:
+	var side := Vector2(toward, 0) if landscape else Vector2(0, inward)
+	var bob := sin(Time.get_ticks_msec() * 0.005) * 2.0
+	var pos := c + side * (RADIUS + 24.0) + Vector2(0, bob)
+	draw_set_transform(pos, rot, Vector2(1.5, 1.5))
+	var gold := Color(1.0, 0.8, 0.15)
+	var shape := PackedVector2Array([
+		Vector2(-14, 8), Vector2(-15, -7), Vector2(-7, 0), Vector2(0, -12),
+		Vector2(7, 0), Vector2(15, -7), Vector2(14, 8),
+	])
+	var loop := shape.duplicate()
+	loop.append(shape[0])
+	draw_polyline(loop, OUTLINE, 6.0, true)
+	draw_colored_polygon(shape, gold)
+	draw_rect(Rect2(-14, 3, 28, 5), gold.darkened(0.25))
+	for tip in [Vector2(-15, -7), Vector2(0, -12), Vector2(15, -7)]:
+		draw_circle(tip, 3.5, OUTLINE)
+		draw_circle(tip, 2.3, Color(1.0, 0.3, 0.35))
+	draw_string(_font, Vector2(16, 10), "x%d" % king_wins, HORIZONTAL_ALIGNMENT_LEFT, 40, 15, Color.WHITE)
 	draw_set_transform(Vector2.ZERO)
 
 
