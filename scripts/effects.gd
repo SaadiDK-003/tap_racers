@@ -4,6 +4,7 @@ extends Node2D
 
 const DrawLayer = preload("res://scripts/draw_layer.gd")
 const Car = preload("res://scripts/car.gd")
+const FontWarmer = preload("res://scripts/font_warmer.gd")
 const MAX_SKID_POINTS := 1600
 
 var cars: Array = []
@@ -20,6 +21,7 @@ const BUBBLE_TIME := 2.2
 var _skids := PackedVector2Array()
 var _glow_layer: Node2D
 var _font: FontVariation
+var _bubble_style: StyleBoxFlat
 var _time := 0.0
 const CROWN_TIME := 3.0 # seconds the crown shows after someone takes the lead
 const CROWN_AHEAD := 40.0 # drawn this far in front of the car, so the car stays visible
@@ -33,9 +35,8 @@ var _last_leader = null
 
 
 func _ready() -> void:
-	_font = FontVariation.new()
-	_font.base_font = ThemeDB.fallback_font
-	_font.variation_embolden = 1.0
+	_font = Game.hud_font()
+	add_child(FontWarmer.new([[_font, 13, 0], [_font, 14, 0], [_font, 17, 0]]))
 	_glow_layer = DrawLayer.new()
 	_glow_layer.draw_fn = _draw_additive
 	_glow_layer.material = Car.additive()
@@ -222,12 +223,13 @@ func _draw_bubble(b: Dictionary, up: float) -> void:
 	var h := 22.0
 	draw_set_transform(car.position + Vector2(0, -44).rotated(up), up, Vector2(pop, pop))
 	var box := Rect2(-w * 0.5, -h, w, h)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(1, 1, 1, 0.95 * a)
-	style.set_corner_radius_all(10)
-	style.border_color = Color(car.color.darkened(0.2), a)
-	style.set_border_width_all(2)
-	draw_style_box(style, box)
+	if _bubble_style == null:
+		_bubble_style = StyleBoxFlat.new()
+		_bubble_style.set_corner_radius_all(10)
+		_bubble_style.set_border_width_all(2)
+	_bubble_style.bg_color = Color(1, 1, 1, 0.95 * a)
+	_bubble_style.border_color = Color(car.color.darkened(0.2), a)
+	draw_style_box(_bubble_style, box)
 	draw_colored_polygon(PackedVector2Array([Vector2(-5, -1), Vector2(5, -1), Vector2(0, 7)]), Color(1, 1, 1, 0.95 * a))
 	draw_string(_font, Vector2(-w * 0.5, -6), text, HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(0.08, 0.08, 0.12, a))
 

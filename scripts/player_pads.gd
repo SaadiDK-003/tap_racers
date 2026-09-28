@@ -11,6 +11,7 @@ signal pause_pressed
 signal layout_changed # pad size changed (touch detected): the race refits the track
 
 const Car = preload("res://scripts/car.gd")
+const FontWarmer = preload("res://scripts/font_warmer.gd")
 
 const RADIUS := 70.0
 const MARGIN_DESKTOP := 20.0
@@ -43,6 +44,10 @@ var _press_anim: Array[float] = [0.0, 0.0, 0.0, 0.0]
 var _font: FontVariation
 var _pill_style: StyleBoxFlat
 var _badge_style: StyleBoxFlat
+var _base: TextureRect # the static layer (drawn behind this node)
+var _base_vp: SubViewport # renders the static layer...
+var _base_painter: Control # ...with this node's _draw_base
+var _base_drawn := -1 # _base_key() of what _base shows
 
 
 ## Size of the strip the pads use (top/bottom in portrait, left/right in landscape);
@@ -85,9 +90,30 @@ func _ready() -> void:
 	if parent:
 		parent.resized.connect(_fit)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_font = FontVariation.new()
-	_font.base_font = ThemeDB.fallback_font
-	_font.variation_embolden = 1.0
+	# The static layer is painted into a texture (re-rendered only when it changes),
+	# so all of it costs one draw call a frame instead of ~90.
+	_base_vp = SubViewport.new()
+	_base_vp.disable_3d = true
+	_base_vp.transparent_bg = true
+	_base_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	_base_painter = Control.new()
+	_base_painter.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_base_painter.draw.connect(_draw_base)
+	_base_vp.add_child(_base_painter)
+	add_child(_base_vp)
+	_base = TextureRect.new()
+	_base.texture = _base_vp.get_texture()
+	_base.show_behind_parent = true
+	_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_base.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_base.stretch_mode = TextureRect.STRETCH_SCALE
+	add_child(_base)
+	_resize_base()
+	_font = Game.hud_font()
+	var sizes := [[21, 6], [14, 5], [36, 0], [26, 0], [20, 0], [19, 0], [32, 0], [16, 0], [15, 0], [14, 0], [11, 0], [10, 0]]
+	var styles := sizes.map(func(s): return [_font, s[0], s[1]])
+	add_child(FontWarmer.new(styles))
+	_base_painter.add_child(FontWarmer.new(styles))
 	_pill_style = StyleBoxFlat.new()
 	_pill_style.bg_color = Color(0.13, 0.15, 0.2, 0.96)
 	_pill_style.set_corner_radius_all(int(PILL_H * 0.5))
@@ -185,6 +211,8 @@ func _fit() -> void:
 	var area := parent.size if parent and parent.size.x > 0.0 else get_viewport_rect().size
 	position = Vector2.ZERO
 	size = area / k
+	if _base:
+		_resize_base()
 	queue_redraw()
 	if changed:
 		layout_changed.emit()
@@ -273,12 +301,17 @@ func _process(delta: float) -> void:
 			busy = busy or t.player == player
 		if not busy and _queued[player].size() > 0:
 			_toasts.append(_queued[player].pop_front())
+	var key := _base_key()
+	if key != _base_drawn:
+		_base_drawn = key
+		_redraw_base()
 	queue_redraw()
 
 
-func _draw() -> void:
+func _draw_body_t() -> void:
+	# Live layer, every frame: only what moves. The rest is on _base (below).
 	for i in num_players:
-		_draw_pad(i)
+		_draw_pad_live(i)
 	for t in _toasts:
 		_draw_toast(t)
 	_draw_close()
@@ -289,121 +322,178 @@ func _text_rotation(player: int) -> float:
 	return PI if corner.y == 0 and Game.is_touch() else 0.0
 
 
-func _draw_pad(i: int) -> void:
+## Where a pad's parts go: {c, col, landscape, toward, inward, pill_len, pill_center, rot, fit}.
+func _geom(i: int) -> Dictionary:
 	var corner: Vector2 = CORNERS[i]
 	var c := button_center(i)
-	var col: Color = Game.PLAYER_COLORS[i]
-	var car = cars[i] if i < cars.size() else null
-	var press := _press_anim[i]
-	var boosting: bool = car != null and car.boosting
-
-	# Colored band running from the screen corner into the button.
-	var corner_pt := Vector2(size.x * corner.x, size.y * corner.y)
-	var d := (c - corner_pt).normalized()
-	var p := d.orthogonal()
-	var bw := RADIUS + 14.0
-	var back := corner_pt - d * 80.0
-	draw_colored_polygon(PackedVector2Array([back + p * bw, c + p * bw, c - p * bw, back - p * bw]), col.darkened(0.3))
-	draw_line(back + p * bw, c + p * bw, OUTLINE, 8.0)
-	draw_line(back - p * bw, c - p * bw, OUTLINE, 8.0)
-
-	# HUD pill: runs sideways in portrait, up/down in landscape, toward the screen middle.
 	var landscape := is_landscape()
 	var toward := -1.0 if corner.x > 0 else 1.0
 	var inward := -1.0 if corner.y > 0 else 1.0
 	var pill_len := pill_len_for(size)
 	var pill_center: Vector2
 	if landscape:
-		var y1 := c.y + inward * (RADIUS + pill_len)
-		draw_style_box(_pill_style, Rect2(c.x - PILL_H * 0.5, minf(c.y, y1), PILL_H, absf(y1 - c.y)))
 		pill_center = Vector2(c.x, c.y + inward * (RADIUS + pill_len * 0.5 + 8.0))
 	else:
-		var x1 := c.x + toward * (RADIUS + pill_len)
-		draw_style_box(_pill_style, Rect2(minf(c.x, x1), c.y - PILL_H * 0.5, absf(x1 - c.x), PILL_H))
 		# Short pills (narrow phones) shift their contents off the button's edge.
 		pill_center = Vector2(c.x + toward * (RADIUS + pill_len * 0.5 + (8.0 if pill_len < PILL_LEN else 6.0)), c.y)
+	var fit := minf(1.0, pill_len / (PILL_LEN + 14.0)) if pill_len < PILL_LEN else 1.0
+	if landscape:
+		fit = minf(1.0, (pill_len + 30.0) / PILL_LEN) # the stacked layout needs less length
+	return {"corner": corner, "c": c, "col": Game.PLAYER_COLORS[i], "landscape": landscape, "toward": toward,
+		"inward": inward, "pill_len": pill_len, "pill_center": pill_center, "rot": _text_rotation(i), "fit": fit}
 
-	# Button with a speed ring around it.
-	var ring_r := RADIUS + 7.0
-	draw_circle(c, RADIUS + 14.0, OUTLINE)
-	draw_arc(c, ring_r, 0.0, TAU, 36, Color(1, 1, 1, 0.08), 7.0)
+
+## Static layer: band, pill, button face, key / CPU name, captions and the place
+## badge. Redrawn only when one of those changes (see _base_key).
+## Sizes the static layer's texture to real screen pixels (sharp on phones).
+func _resize_base() -> void:
+	var k := scale.x * get_tree().root.get_final_transform().get_scale().x
+	_base_vp.size = Vector2i(maxi(1, ceili(size.x * k)), maxi(1, ceili(size.y * k)))
+	_base_vp.oversampling_override = k # rasterize its text at that size too
+	_base_painter.scale = Vector2(k, k)
+	_base_painter.size = size
+	_base.position = Vector2.ZERO
+	_base.size = size
+	_redraw_base()
+
+
+func _redraw_base() -> void:
+	_base_painter.queue_redraw()
+	_base_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
+func _draw_base() -> void:
+	var ci := _base_painter
+	for i in num_players:
+		var g := _geom(i)
+		var corner: Vector2 = g.corner
+		var c: Vector2 = g.c
+		var col: Color = g.col
+		var car = cars[i] if i < cars.size() else null
+		# Colored band running from the screen corner into the button.
+		var corner_pt := Vector2(size.x * corner.x, size.y * corner.y)
+		var d := (c - corner_pt).normalized()
+		var p := d.orthogonal()
+		var bw := RADIUS + 14.0
+		var back := corner_pt - d * 80.0
+		ci.draw_colored_polygon(PackedVector2Array([back + p * bw, c + p * bw, c - p * bw, back - p * bw]), col.darkened(0.3))
+		ci.draw_line(back + p * bw, c + p * bw, OUTLINE, 8.0)
+		ci.draw_line(back - p * bw, c - p * bw, OUTLINE, 8.0)
+		# HUD pill: runs sideways in portrait, up/down in landscape, toward the screen middle.
+		var pill_len: float = g.pill_len
+		if g.landscape:
+			var y1: float = c.y + g.inward * (RADIUS + pill_len)
+			ci.draw_style_box(_pill_style, Rect2(c.x - PILL_H * 0.5, minf(c.y, y1), PILL_H, absf(y1 - c.y)))
+		else:
+			var x1: float = c.x + g.toward * (RADIUS + pill_len)
+			ci.draw_style_box(_pill_style, Rect2(minf(c.x, x1), c.y - PILL_H * 0.5, absf(x1 - c.x), PILL_H))
+		# Button: outline, speed-ring track, face, and the nitro gauge's track.
+		ci.draw_circle(c, RADIUS + 14.0, OUTLINE)
+		ci.draw_arc(c, RADIUS + 7.0, 0.0, TAU, 36, Color(1, 1, 1, 0.08), 7.0)
+		ci.draw_circle(c, RADIUS, col.lightened(0.5))
+		ci.draw_circle(c, RADIUS - 7.0, col)
+		ci.draw_circle(c + Vector2(-RADIUS * 0.28, -RADIUS * 0.3), RADIUS * 0.38, Color(1, 1, 1, 0.14))
+		if car != null:
+			ci.draw_arc(c, RADIUS - 11.0, 0.0, TAU, 32, Color(0, 0, 0, 0.25), 7.0)
+		ci.draw_set_transform(c, g.rot)
+		if i >= humans:
+			# CPU rival: dimmed button with a label instead of a key.
+			ci.draw_circle(Vector2.ZERO, RADIUS - 7.0, Color(0, 0, 0, 0.35))
+			var tag: String = Game.driver(i).tag
+			ci.draw_string(_font, Vector2(-RADIUS, 10), tag, HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 26 if tag.length() <= 5 else 20, Color(1, 1, 1, 0.9))
+			ci.draw_string(_font, Vector2(-RADIUS, 32), "CPU • " + Game.CPU_LEVELS[Game.cpu_level], HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 11, Color(1, 1, 1, 0.7))
+		elif not Game.is_touch():
+			# Keyboard: show the player's key. Phones get a plain coloured button (the
+			# speed ring and the pulsing nitro ring say everything).
+			ci.draw_string(_font, Vector2(-RADIUS, 12), Game.key_label(i), HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 32, Color(1, 1, 1, 0.95))
+		# Pill: caption, lap bar track and the position badge.
+		ci.draw_set_transform(g.pill_center, g.rot, Vector2(g.fit, g.fit))
+		var finished: bool = car != null and car.state == Car.State.FINISHED
+		var caption := "FINISH" if finished else "LAP"
+		var place := _places[i]
+		_badge_style.bg_color = MEDALS[clampi(place - 1, 0, 3)]
+		var badge := Rect2(-21, 12, 42, 44) if g.landscape else Rect2(28, -22, 42, 44)
+		if g.landscape:
+			ci.draw_string(_font, Vector2(-40, -44), caption, HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color(1, 1, 1, 0.6))
+		else:
+			ci.draw_string(_font, Vector2(-68, -12), caption, HORIZONTAL_ALIGNMENT_LEFT, 100, 15, Color(1, 1, 1, 0.6))
+		var lap_now := str(mini(_lap_of(car) + 1, laps))
+		var num_w := _font.get_string_size(lap_now, HORIZONTAL_ALIGNMENT_LEFT, -1, 36).x
+		var num_x := -68.0
+		var num_y := 20.0
+		if g.landscape:
+			var of_w := _font.get_string_size("/%d" % laps, HORIZONTAL_ALIGNMENT_LEFT, -1, 19).x
+			num_x = -(num_w + of_w + 2.0) * 0.5
+			num_y = -12.0
+		ci.draw_string(_font, Vector2(num_x, num_y), lap_now, HORIZONTAL_ALIGNMENT_LEFT, 40, 36, col)
+		ci.draw_string(_font, Vector2(num_x + num_w + 2.0, num_y), "/%d" % laps, HORIZONTAL_ALIGNMENT_LEFT, 50, 19, Color(1, 1, 1, 0.55))
+		ci.draw_rect(_bar_rect(g.landscape), Color(1, 1, 1, 0.12))
+		ci.draw_style_box(_badge_style, badge)
+		ci.draw_string(_font, badge.position + Vector2(0, 28), str(place), HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, 26, OUTLINE)
+		ci.draw_string(_font, badge.position + Vector2(0, 40), SUFFIX[clampi(place - 1, 0, 3)], HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, 10, OUTLINE)
+		ci.draw_set_transform(Vector2.ZERO)
+
+
+func _lap_of(car) -> int:
+	return clampi(floori(car.progress / track_length), 0, laps) if car != null else 0
+
+
+func _bar_rect(landscape: bool) -> Rect2:
+	return Rect2(-28, -2, 56, 6) if landscape else Rect2(-68, 27, 88, 6)
+
+
+## Changes whenever the static layer needs a redraw.
+func _base_key() -> int:
+	var k := hash(size) + humans * 7 + num_players * 131 + int(Game.is_touch()) * 977
+	for i in num_players:
+		k = k * 31 + _places[i]
+		if i < cars.size():
+			k = k * 17 + _lap_of(cars[i])
+		if i < cars.size() and cars[i].state == Car.State.FINISHED:
+			k += 1 << (20 + i)
+	return k
+
+
+## Live layer for one pad: speed ring, press glow, nitro, lap number and bar, crown.
+func _draw_pad_live(i: int) -> void:
+	var car = cars[i] if i < cars.size() else null
+	var g := _geom(i)
+	var c: Vector2 = g.c
+	var col: Color = g.col
+	var press := _press_anim[i]
+	var boosting: bool = car != null and car.boosting
 	if car != null:
 		var ratio: float = clampf(car.speed / Car.BOOST_SPEED, 0.0, 1.0)
 		if ratio > 0.01:
 			var ring_col: Color = Car.NITRO_COLOR if boosting else col.lightened(0.2)
-			draw_arc(c, ring_r, -PI * 0.5, -PI * 0.5 + TAU * ratio, maxi(4, int(36 * ratio)), ring_col, 7.0)
-	var r := RADIUS * (1.0 - 0.07 * press)
-	draw_circle(c, r, col.lightened(0.5))
-	draw_circle(c, r - 7.0, col.lerp(Color.WHITE, 0.2 * press))
-	draw_circle(c + Vector2(-r * 0.28, -r * 0.3), r * 0.38, Color(1, 1, 1, 0.14))
+			draw_arc(c, RADIUS + 7.0, -PI * 0.5, -PI * 0.5 + TAU * ratio, maxi(4, int(36 * ratio)), ring_col, 7.0)
+	if press > 0.01:
+		# Pressed: the face brightens and its rim darkens (looks pushed in).
+		draw_circle(c, RADIUS - 7.0, Color(1, 1, 1, 0.2 * press))
+		draw_arc(c, RADIUS - 2.5 * press, 0.0, TAU, 32, Color(col.darkened(0.35), press), 5.0 * press + 0.5)
 	# Nitro tank gauge inside the button; pulses when ready to burn.
-	if car != null:
+	if car != null and car.nitro > 0.01:
 		var armed: bool = car.nitro_armed
 		var pulse := 0.65 + 0.35 * sin(Time.get_ticks_msec() * 0.012) if armed and not boosting else 1.0
-		draw_arc(c, r - 11.0, 0.0, TAU, 32, Color(0, 0, 0, 0.25), 7.0)
-		if car.nitro > 0.01:
-			draw_arc(c, r - 11.0, -PI * 0.5, -PI * 0.5 + TAU * car.nitro, maxi(4, int(32 * car.nitro)), Color(Car.NITRO_COLOR, pulse), 7.0)
-
-	var rot := _text_rotation(i)
-	draw_set_transform(c, rot)
-	if i >= humans:
-		# CPU rival: dimmed button with a label instead of a key.
-		draw_circle(Vector2.ZERO, r - 7.0, Color(0, 0, 0, 0.35))
-		var tag: String = Game.driver(i).tag
-		draw_string(_font, Vector2(-RADIUS, 10), tag, HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 26 if tag.length() <= 5 else 20, Color(1, 1, 1, 0.9))
-		draw_string(_font, Vector2(-RADIUS, 32), "CPU • " + Game.CPU_LEVELS[Game.cpu_level], HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 11, Color(1, 1, 1, 0.7))
-	elif not Game.is_touch():
-		# Keyboard: show the player's key. Phones get a plain coloured button (the
-		# speed ring and the pulsing nitro ring say everything).
-		if car != null and car.nitro_armed:
-			draw_string(_font, Vector2(-RADIUS, -20), "NITRO!" if boosting else "TAP TAP!", HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 16, Color(1, 1, 1, 0.95))
-		draw_string(_font, Vector2(-RADIUS, 12), Game.key_label(i), HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 32, Color(1, 1, 1, 0.95))
-
+		draw_arc(c, RADIUS - 11.0, -PI * 0.5, -PI * 0.5 + TAU * car.nitro, maxi(4, int(32 * car.nitro)), Color(Car.NITRO_COLOR, pulse), 7.0)
+	if i < humans and not Game.is_touch() and car != null and car.nitro_armed:
+		draw_set_transform(c, g.rot)
+		draw_string(_font, Vector2(-RADIUS, -20), "NITRO!" if boosting else "TAP TAP!", HORIZONTAL_ALIGNMENT_CENTER, RADIUS * 2.0, 16, Color(1, 1, 1, 0.95))
+	draw_set_transform(Vector2.ZERO)
 	if i == king:
-		_draw_king(c, landscape, toward, inward, rot)
+		_draw_king(c, g.landscape, g.toward, g.inward, g.rot)
 
-	# Pill contents: LAP x/y, lap progress bar and the position badge.
-	var fit := minf(1.0, pill_len / (PILL_LEN + 14.0)) if pill_len < PILL_LEN else 1.0
-	if landscape:
-		fit = minf(1.0, (pill_len + 30.0) / PILL_LEN) # the stacked layout needs less length
-	draw_set_transform(pill_center, rot, Vector2(fit, fit))
+	# Pill: the lap progress bar (the lap number is on the static layer).
+	draw_set_transform(g.pill_center, g.rot, Vector2(g.fit, g.fit))
 	var done := 0
 	var frac := 0.0
-	var finished := false
 	if car != null:
 		done = clampi(floori(car.progress / track_length), 0, laps)
 		frac = clampf(car.progress / track_length - done, 0.0, 1.0)
-		finished = car.state == Car.State.FINISHED
-	if finished:
-		frac = 1.0
-	var lap_now := str(mini(done + 1, laps))
-	var caption := "FINISH" if finished else "LAP"
-	var num_w := _font.get_string_size(lap_now, HORIZONTAL_ALIGNMENT_LEFT, -1, 36).x
-	var of_w := _font.get_string_size("/%d" % laps, HORIZONTAL_ALIGNMENT_LEFT, -1, 19).x
-	var place := _places[i]
-	_badge_style.bg_color = MEDALS[clampi(place - 1, 0, 3)]
-	var bar: Rect2
-	var badge: Rect2
-	var num_x := -68.0
-	var num_y := 20.0
-	if landscape:
-		# Stacked layout for the narrow vertical pill.
-		draw_string(_font, Vector2(-40, -44), caption, HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color(1, 1, 1, 0.6))
-		num_x = -(num_w + of_w + 2.0) * 0.5
-		num_y = -12.0
-		bar = Rect2(-28, -2, 56, 6)
-		badge = Rect2(-21, 12, 42, 44)
-	else:
-		draw_string(_font, Vector2(-68, -12), caption, HORIZONTAL_ALIGNMENT_LEFT, 100, 15, Color(1, 1, 1, 0.6))
-		bar = Rect2(-68, 27, 88, 6)
-		badge = Rect2(28, -22, 42, 44)
-	draw_string(_font, Vector2(num_x, num_y), lap_now, HORIZONTAL_ALIGNMENT_LEFT, 40, 36, col)
-	draw_string(_font, Vector2(num_x + num_w + 2.0, num_y), "/%d" % laps, HORIZONTAL_ALIGNMENT_LEFT, 50, 19, Color(1, 1, 1, 0.55))
-	draw_rect(bar, Color(1, 1, 1, 0.12))
+		if car.state == Car.State.FINISHED:
+			frac = 1.0
+	var bar := _bar_rect(g.landscape)
 	draw_rect(Rect2(bar.position, Vector2(bar.size.x * frac, bar.size.y)), col)
-	draw_style_box(_badge_style, badge)
-	draw_string(_font, badge.position + Vector2(0, 28), str(place), HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, 26, OUTLINE)
-	draw_string(_font, badge.position + Vector2(0, 40), SUFFIX[clampi(place - 1, 0, 3)], HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, 10, OUTLINE)
 	draw_set_transform(Vector2.ZERO)
 
 
@@ -472,3 +562,11 @@ func _draw_close() -> void:
 	var x_col := Color(0.55, 0.62, 0.72)
 	draw_line(c + Vector2(-s, -s), c + Vector2(s, s), x_col, 6.0, true)
 	draw_line(c + Vector2(-s, s), c + Vector2(s, -s), x_col, 6.0, true)
+
+
+func _draw() -> void:
+	var __t := Time.get_ticks_usec()
+	_draw_body_t()
+	var __d := Time.get_ticks_usec() - __t
+	if __d > 2500:
+		print("SLOWDRAW player_pads %.1f ms at %.2fs" % [__d / 1000.0, Time.get_ticks_msec() / 1000.0])

@@ -275,6 +275,19 @@ func buzz_for(i: int, ms: int, strength := 1.0) -> void:
 		buzz(ms, strength)
 
 
+var _hud_font: FontVariation
+
+
+## The bold font the HUD, pads and speech bubbles draw with (one shared instance,
+## so they share one glyph cache).
+func hud_font() -> FontVariation:
+	if _hud_font == null:
+		_hud_font = FontVariation.new()
+		_hud_font.base_font = ThemeDB.fallback_font
+		_hud_font.variation_embolden = 1.0
+	return _hud_font
+
+
 var _touch_seen := false
 
 

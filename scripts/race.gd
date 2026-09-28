@@ -11,6 +11,7 @@ const RainLayer = preload("res://scripts/rain_layer.gd")
 const TutorialCoach = preload("res://scripts/tutorial_coach.gd")
 const TimeTrial = preload("res://scripts/time_trial.gd")
 const StarRow = preload("res://scripts/star_row.gd")
+const FontWarmer = preload("res://scripts/font_warmer.gd")
 const CE = preload("res://scripts/career_events.gd")
 
 enum Phase { INTRO, COUNTDOWN, RACING, RESULTS }
@@ -774,6 +775,9 @@ func _build_ui() -> void:
 	box.add_child(_big_label)
 	_sub_label = _make_label(34, 10)
 	box.add_child(_sub_label)
+	# Big call-outs (GO!, FINAL LAP!, ...) rasterize while loading, not mid-race.
+	var label_font := _big_label.get_theme_font("font")
+	root_ui.add_child(FontWarmer.new([[label_font, 92, 16], [label_font, 34, 10]]))
 
 	_results = _make_overlay(root)
 	_results_box = _results.get_child(0).get_child(0).get_child(0)

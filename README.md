@@ -5,7 +5,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 ## Menu
 - **Home:** a big **PLAY** button with a one-line summary of your race settings, **RACE SETUP**, **CAREER** (with your star count), Garage, Records, Awards, How to Play, and the daily challenge. The gear in the top corner opens Settings.
 - **Race setup:** players, CPU rivals and level, races, laps, items and weather, plus who's on the grid (with the CPU drivers' names).
-- **Settings:** sound, music and fullscreen (fullscreen is desktop only).
+- **Settings:** sound, music, vibration (phones and tablets) and fullscreen (desktop only).
 
 ## Modes
 - **Players and CPU rivals:** 1–4 human players, with CPU rivals filling the grid up to 4 cars. A single player always gets at least one CPU. CPU level is Easy, Normal or Hard.
@@ -145,6 +145,7 @@ godot --path . -- --race --players=4 --map=1 --laps=2 --bots
 - `--race --career=3` races career event 4 (numbered from 0).
 - `--tutorial` starts the tutorial, `--races=0` starts a time trial, and `--autopilot` lets the bot drive P1 while still saving results.
 - `--bots` makes the computer drive every car well. `--bots=coast` makes them let go before a jump, to test splashes. `--bots=reckless` never brakes (to test crashes).
+- `--perf` prints fps, the worst frame, draw calls and script time every second, and logs each hitch (a frame over 25 ms).
 - `--shot=out.png --shot_time=2` saves a screenshot and quits.
 
 ## Exporting
