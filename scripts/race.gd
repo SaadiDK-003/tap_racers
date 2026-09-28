@@ -206,6 +206,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_toggle_pause()
+	# Phone sent to the background (or browser tab hidden): pause the race.
+	elif what == NOTIFICATION_APPLICATION_PAUSED or (what == NOTIFICATION_APPLICATION_FOCUS_OUT and (OS.has_feature("mobile") or OS.has_feature("web"))):
+		if not _paused and phase != Phase.RESULTS and is_node_ready():
+			_toggle_pause()
 
 
 func _is_held(i: int) -> bool:

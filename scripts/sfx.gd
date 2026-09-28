@@ -93,6 +93,21 @@ func set_music_enabled(on: bool) -> void:
 	_sync_music()
 
 
+## Silence everything while the game is in the background (phone Home button, app
+## switch, browser tab hidden) and bring it back when the player returns.
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT:
+			if what == NOTIFICATION_APPLICATION_PAUSED or OS.has_feature("mobile") or OS.has_feature("web"):
+				_set_background(true)
+		NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN:
+			_set_background(false)
+
+
+func _set_background(on: bool) -> void:
+	AudioServer.set_bus_mute(0, on)
+
+
 func _exit_tree() -> void:
 	if _music_task >= 0:
 		WorkerThreadPool.wait_for_task_completion(_music_task)
