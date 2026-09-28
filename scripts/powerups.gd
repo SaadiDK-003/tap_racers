@@ -29,6 +29,10 @@ var _rockets: Array[Dictionary] = [] # {s, lane, shooter, target, t, dir}
 var _prev: Dictionary = {} # car -> progress last frame
 var _t := 0.0
 var _glow: Node2D
+var _roulette: Array[Dictionary] = [] # {car, item, t} item boxes still spinning
+var _icons: Node2D # roulette icons, drawn above the cars
+const ROULETTE_TIME := 0.75
+const ITEMS := ["shield", "rocket", "mega"]
 
 
 func setup(track_node, lane_count: int) -> void:
@@ -37,6 +41,10 @@ func setup(track_node, lane_count: int) -> void:
 	_glow.material = Car.additive()
 	_glow.draw_fn = _draw_glow
 	add_child(_glow)
+	_icons = DrawLayer.new()
+	_icons.draw_fn = _draw_roulette
+	_icons.z_index = 4
+	add_child(_icons)
 	# Three spots spread evenly around the lap, each nudged to the calmest bit of road
 	# nearby (never on the bridge or right at the start line).
 	var L: float = track.length
@@ -72,8 +80,15 @@ func _process(delta: float) -> void:
 		for i in boxes.size():
 			boxes[i] = maxf(0.0, boxes[i] - delta)
 	_update_rockets(delta)
+	for r in _roulette:
+		r.t += delta
+		if r.t >= ROULETTE_TIME:
+			if r.car.state == Car.State.RACING:
+				picked.emit(r.car, r.item)
+	_roulette = _roulette.filter(func(r): return r.t < ROULETTE_TIME)
 	queue_redraw()
 	_glow.queue_redraw()
+	_icons.queue_redraw()
 
 
 ## Called every frame by the race, after the cars have moved.
@@ -87,8 +102,17 @@ func update_cars(places: Array[int]) -> void:
 		for spot in _spots:
 			if _crossed(before, now, spot.s) and car.index < spot.boxes.size() and spot.boxes[car.index] <= 0.0:
 				spot.boxes[car.index] = RESPAWN
-				var item := _roll(places[car.index], cars.size())
-				picked.emit(car, item)
+				if not _spinning(car):
+					_roulette.append({"car": car, "item": _roll(places[car.index], cars.size()), "t": 0.0})
+					if Game.debug_shot_on == "roulette":
+						Game.debug_capture(0.3)
+
+
+func _spinning(car) -> bool:
+	for r in _roulette:
+		if r.car == car:
+			return true
+	return false
 
 
 func _crossed(a: float, b: float, s: float) -> bool:
@@ -227,6 +251,42 @@ func _draw_rocket(r: Dictionary) -> void:
 	draw_colored_polygon(PackedVector2Array([Vector2(8, -6.5), Vector2(17, 0), Vector2(8, 6.5)]), OUTLINE)
 	draw_colored_polygon(PackedVector2Array([Vector2(8, -4.5), Vector2(14, 0), Vector2(8, 4.5)]), Color(1.0, 0.3, 0.2))
 	draw_set_transform(Vector2.ZERO)
+
+
+## Spinning item icon above each car that just hit a box. It flicks through the
+## items, slowing down, then pops up showing the one you got.
+func _draw_roulette(ci: CanvasItem) -> void:
+	var up := -(get_parent() as Node2D).rotation
+	for r in _roulette:
+		var car = r.car
+		var t: float = r.t
+		var landing := t > ROULETTE_TIME - 0.22
+		var shown: String = r.item
+		if not landing:
+			# Ticks get slower as the roulette winds down.
+			var ticks := int(pow(t / ROULETTE_TIME, 0.6) * 9.0)
+			shown = ITEMS[(ticks + car.index) % ITEMS.size()]
+		var pop := 1.0 + (0.35 * (1.0 - (ROULETTE_TIME - t) / 0.22) if landing else 0.0)
+		var p: Vector2 = car.position + Vector2(0, -40).rotated(up)
+		ci.draw_set_transform(p, up, Vector2(pop, pop))
+		ci.draw_circle(Vector2.ZERO, 15.0, OUTLINE)
+		ci.draw_circle(Vector2.ZERO, 12.5, Color(0.95, 0.96, 1.0))
+		draw_item_icon(ci, shown, 1.0)
+	ci.draw_set_transform(Vector2.ZERO)
+
+
+## Small icon for an item, centred on the current transform's origin.
+static func draw_item_icon(ci: CanvasItem, item: String, k: float) -> void:
+	match item:
+		"shield":
+			ci.draw_arc(Vector2.ZERO, 8.0 * k, 0.0, TAU, 20, Color(0.25, 0.7, 1.0), 3.0 * k, true)
+			ci.draw_circle(Vector2.ZERO, 5.5 * k, Color(0.4, 0.85, 1.0, 0.5))
+		"rocket":
+			ci.draw_rect(Rect2(Vector2(-7, -3) * k, Vector2(10, 6) * k), Color(0.35, 0.35, 0.4))
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(3, -3) * k, Vector2(9, 0) * k, Vector2(3, 3) * k]), Color(1.0, 0.3, 0.2))
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(-7, -2) * k, Vector2(-11, 0) * k, Vector2(-7, 2) * k]), Color(1.0, 0.6, 0.1))
+		"mega":
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(1, -9) * k, Vector2(-5, 1) * k, Vector2(0, 1) * k, Vector2(-2, 9) * k, Vector2(5, -2) * k, Vector2(0, -2) * k]), Color(0.2, 0.7, 1.0))
 
 
 func _draw_glow(ci: CanvasItem) -> void:

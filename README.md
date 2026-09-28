@@ -29,7 +29,9 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
   - **ROCKET:** homes in on the car ahead of you (or 2nd place, if you're leading) and blows it off the track, even mid-nitro. A shield blocks it. The target gets a "ROCKET INCOMING!" warning.
   - **MEGA NITRO:** fills your tank, and the next burst lasts longer.
 
-  Cars at the back mostly get rockets and nitro; the leader mostly gets shields.
+  Cars at the back mostly get rockets and nitro; the leader mostly gets shields. When you hit a box, a roulette icon spins over your car for a moment before it lands on your item.
+- **Boost pads:** glowing arrow strips on the straightest parts of most tracks. Drive over one for an instant speed kick, with a moment of crash protection. They're there even with ITEMS off.
+- **Winner moment:** a spotlight follows the winner while fireworks burst around their car in their colour.
 - **WEATHER (RANDOM / CLEAR / RAIN / NIGHT):**
   - **Rain** means less grip in corners, rain streaks, spray behind cars and rain sound.
   - **Night** means a dark track, headlight beams and glowing street lamps.

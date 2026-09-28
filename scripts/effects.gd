@@ -20,6 +20,10 @@ var _font: FontVariation
 var _time := 0.0
 const CROWN_TIME := 3.0 # seconds the crown shows after someone takes the lead
 const CROWN_AHEAD := 40.0 # drawn this far in front of the car, so the car stays visible
+static var _spot_tex: GradientTexture2D
+var _spot_car = null # winner in the spotlight
+var _spot_t := 0.0
+var _firework_t := 0.0
 var _crown_pop := 0.0 # bounces the crown when it appears
 var _crown_t := 0.0 # time left to show the crown
 var _last_leader = null
@@ -47,6 +51,38 @@ func burst(p: Vector2, car_color: Color) -> void:
 	for i in 22:
 		var c := Color(1.0, 0.75, 0.3) if i % 3 != 0 else car_color
 		_sparks.append({"p": p, "v": Vector2.from_angle(randf() * TAU) * randf_range(160, 420), "t": 0.0, "life": randf_range(0.3, 0.6), "c": c})
+
+
+## Winner moment: a spotlight follows the car and fireworks burst around it.
+func celebrate(car) -> void:
+	_spot_car = car
+	_spot_t = 3.2
+	_firework_t = 0.0
+
+
+func firework(p: Vector2, col: Color) -> void:
+	_waves.append({"p": p, "t": 0.0, "c": col})
+	for i in 26:
+		var a := i * TAU / 26.0 + randf() * 0.1
+		var c := col if i % 3 != 0 else Color(1.0, 0.95, 0.7)
+		_sparks.append({"p": p, "v": Vector2.from_angle(a) * randf_range(230, 330), "t": 0.0, "life": randf_range(0.55, 0.85), "c": c})
+
+
+static func _spotlight_texture() -> GradientTexture2D:
+	if _spot_tex == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(0, 0, 0, 0))
+		g.set_color(1, Color(0, 0, 0, 0.6))
+		g.add_point(0.05, Color(0, 0, 0, 0))
+		g.add_point(0.12, Color(0, 0, 0, 0.55))
+		_spot_tex = GradientTexture2D.new()
+		_spot_tex.gradient = g
+		_spot_tex.fill = GradientTexture2D.FILL_RADIAL
+		_spot_tex.fill_from = Vector2(0.5, 0.5)
+		_spot_tex.fill_to = Vector2(1.0, 0.5)
+		_spot_tex.width = 256
+		_spot_tex.height = 256
+	return _spot_tex
 
 
 ## Expanding ring when a car fires its nitro.
@@ -86,11 +122,24 @@ func _process(delta: float) -> void:
 		_crown_t = CROWN_TIME if leader != null else 0.0
 	_crown_pop = maxf(0.0, _crown_pop - delta * 3.0)
 	_crown_t = maxf(0.0, _crown_t - delta)
+	if _spot_t > 0.0:
+		_spot_t -= delta
+		_firework_t -= delta
+		if _firework_t <= 0.0 and _spot_t > 0.6:
+			_firework_t = 0.35
+			var p: Vector2 = _spot_car.position + Vector2.from_angle(randf() * TAU) * randf_range(60.0, 130.0)
+			firework(p, _spot_car.color.lightened(randf_range(0.0, 0.3)))
+			Sfx.play(Sfx.crash, -18.0, randf_range(1.8, 2.3))
 	queue_redraw()
 	_glow_layer.queue_redraw()
 
 
 func _draw() -> void:
+	if _spot_t > 0.0 and _spot_car != null:
+		# Darken everything except a circle around the winner (fades in and out).
+		var a := clampf(minf(3.2 - _spot_t, _spot_t) / 0.4, 0.0, 1.0)
+		var r := 1500.0
+		draw_texture_rect(_spotlight_texture(), Rect2(_spot_car.position - Vector2(r, r), Vector2(r, r) * 2.0), false, Color(1, 1, 1, a))
 	for q in _puffs:
 		var k: float = q.t / q.life
 		var c: Color = q.c
