@@ -19,9 +19,12 @@ const THEMES := {
 	"beach": [["palm", 7, 20, 30], ["umbrella", 2, 14, 18, 6], ["towel", 2, 12, 14, 6], ["lagoon", 1, 60, 100]],
 	"volcano": [["rock", 7, 12, 32], ["lava", 4, 28, 55, 9], ["vent", 3, 10, 14, 10], ["crack", 3, 30, 50, 12]],
 	"neon": [["building", 6, 36, 64], ["neon_sign", 5, 26, 40, 14], ["lamp", 2, 7, 7, 14]],
+	"space": [["stars", 8, 26, 40], ["module", 4, 30, 48, 10], ["satellite", 3, 16, 20, 8], ["planet", 1, 45, 80, 3], ["rock", 3, 10, 22]],
+	"farm": [["field", 7, 50, 85, 14], ["tree", 6, 16, 26], ["barn", 3, 34, 46, 5], ["hay", 2, 9, 12, 8], ["cow", 2, 10, 10, 8], ["fence", 2, 30, 40, 8]],
+	"harbor": [["yard", 8, 42, 60, 16], ["water", 3, 50, 90, 6], ["boat", 3, 22, 30, 8], ["crane", 3, 34, 42, 6], ["crate", 3, 8, 11, 14], ["lamp", 2, 7, 7, 12]],
 }
 # Kinds that lie flat on the ground and are drawn first.
-const FLAT := ["parking", "pond", "frozen_pond", "lagoon", "dune", "towel", "flowers", "shell", "bones", "lava", "crack"]
+const FLAT := ["stars", "field", "water", "parking", "pond", "frozen_pond", "lagoon", "dune", "towel", "flowers", "shell", "bones", "lava", "crack"]
 const NEON_COLORS := [Color(1.0, 0.25, 0.7), Color(0.2, 0.9, 1.0), Color(0.65, 0.4, 1.0), Color(1.0, 0.85, 0.2), Color(0.3, 1.0, 0.5)]
 const CAR_COLORS := [
 	Color(0.85, 0.2, 0.2), Color(0.2, 0.45, 0.85), Color(0.92, 0.92, 0.95), Color(0.2, 0.2, 0.24),
@@ -36,6 +39,9 @@ const PALETTES := {
 	"beach": [Color(0.95, 0.35, 0.3), Color(0.3, 0.65, 0.95), Color(1.0, 0.8, 0.25), Color(0.4, 0.85, 0.5)],
 	"volcano": [Color(0.22, 0.18, 0.18), Color(0.28, 0.22, 0.2), Color(0.18, 0.15, 0.16)],
 	"neon": [Color(0.14, 0.12, 0.2), Color(0.18, 0.14, 0.24), Color(0.12, 0.13, 0.2)], # dark towers; signs glow
+	"space": [Color(0.42, 0.44, 0.5), Color(0.36, 0.38, 0.46), Color(0.5, 0.48, 0.52)],
+	"farm": [Color(0.3, 0.52, 0.2), Color(0.36, 0.58, 0.22), Color(0.26, 0.46, 0.2)],
+	"harbor": [Color(0.85, 0.3, 0.2), Color(0.2, 0.5, 0.8), Color(0.95, 0.7, 0.15), Color(0.25, 0.65, 0.4), Color(0.9, 0.9, 0.9)],
 
 }
 
@@ -48,6 +54,9 @@ static func build(track, map, view := {}) -> Array[Dictionary]:
 	var grid := {}
 	var road_half: float = map.road_width * 0.5
 
+	# Keep every prop out of the river (invisible placeholder props along it).
+	for q in track.river_points():
+		_register(grid, props, {"k": "river_space", "p": q, "r": track.JUMP_GAP * 0.5 + 30.0, "rot": 0.0, "seed": 0, "c": Color.WHITE})
 	_add_grandstand(track, map, field, props, grid)
 	_add_parking_lots(track, map, field, props, grid, rng, view)
 	_add_tire_walls(track, map, field, props, grid)
@@ -169,7 +178,7 @@ static func _add_grandstand(track, map, field: Dictionary, props: Array[Dictiona
 				var q: Vector2 = c + tg * along + normal * side * across
 				if _field_dist(field, q) < road_half + 14.0:
 					ok = false
-		if ok:
+		if ok and not _overlaps(grid, props, c, 110.0):
 			_register(grid, props, {"k": "grandstand", "p": c, "r": 120.0, "rot": tg.angle(), "seed": 7, "c": Color.WHITE})
 			return
 
@@ -307,6 +316,21 @@ static func draw_all(ci: CanvasItem, props: Array[Dictionary]) -> void:
 			"vent": _vent(ci, prop)
 			"crack": _crack(ci, prop)
 			"neon_sign": _neon_sign(ci, prop)
+			"stars": _stars(ci, prop)
+			"module": _module(ci, prop)
+			"satellite": _satellite(ci, prop)
+			"planet": _planet(ci, prop)
+			"field": _field(ci, prop)
+			"hay": _hay(ci, prop)
+			"barn": _barn(ci, prop)
+			"cow": _cow(ci, prop)
+			"fence": _fence(ci, prop)
+			"water": _water(ci, prop, Color(0.12, 0.3, 0.5), Color(0.25, 0.45, 0.62))
+			"container": _container(ci, prop)
+			"yard": _yard(ci, prop)
+			"boat": _boat(ci, prop)
+			"crane": _crane(ci, prop)
+			"crate": _crate(ci, prop)
 
 
 static func _blob(center: Vector2, r: float, seed: int, points := 12, wobble := 0.18) -> PackedVector2Array:
@@ -695,6 +719,232 @@ static func _neon_sign(ci: CanvasItem, prop: Dictionary) -> void:
 		x += 8.0
 		k += 1
 	ci.draw_set_transform(Vector2.ZERO)
+
+
+# --- Space ---------------------------------------------------------------------
+
+static func _stars(ci: CanvasItem, prop: Dictionary) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = prop.seed
+	for i in 7:
+		var q: Vector2 = prop.p + Vector2(rng.randf_range(-1, 1), rng.randf_range(-1, 1)) * prop.r
+		var big := rng.randf() < 0.2
+		ci.draw_circle(q, 2.2 if big else 1.2, Color(1, 1, 1, rng.randf_range(0.4, 0.9)))
+		if big:
+			ci.draw_line(q - Vector2(4, 0), q + Vector2(4, 0), Color(1, 1, 1, 0.35), 1.0)
+			ci.draw_line(q - Vector2(0, 4), q + Vector2(0, 4), Color(1, 1, 1, 0.35), 1.0)
+
+
+static func _module(ci: CanvasItem, prop: Dictionary) -> void:
+	# Station module: a rounded hull with lit windows and a beacon.
+	var p: Vector2 = prop.p
+	var r: float = prop.r
+	var rot := snappedf(prop.rot, PI * 0.5)
+	var half := Vector2(r, r * 0.45)
+	ci.draw_set_transform(p, rot)
+	var hull := StyleBoxFlat.new()
+	hull.bg_color = prop.c
+	hull.set_corner_radius_all(int(half.y))
+	hull.border_color = OUTLINE
+	hull.set_border_width_all(3)
+	ci.draw_rect(Rect2(-half + Vector2(6, 7), half * 2.0), SHADOW)
+	ci.draw_style_box(hull, Rect2(-half, half * 2.0))
+	ci.draw_rect(Rect2(-half.x + 8, -2, half.x * 2.0 - 16, 4), Color(prop.c.lightened(0.25)))
+	var x := -half.x + 14.0
+	while x < half.x - 12.0:
+		ci.draw_rect(Rect2(x, -half.y + 5, 6, 5), Color(0.55, 0.85, 1.0, 0.9))
+		x += 12.0
+	ci.draw_circle(Vector2(half.x - 8, half.y - 8), 3.0, Color(1.0, 0.3, 0.3))
+	ci.draw_set_transform(Vector2.ZERO)
+
+
+static func _satellite(ci: CanvasItem, prop: Dictionary) -> void:
+	var p: Vector2 = prop.p
+	var d := Vector2.from_angle(prop.rot)
+	var n := d.orthogonal()
+	ci.draw_line(p - d * 18.0, p + d * 18.0, OUTLINE, 3.0)
+	for side in [-1.0, 1.0]:
+		var c: Vector2 = p + d * 14.0 * side
+		var panel := PackedVector2Array([c - d * 6.0 - n * 5.0, c + d * 6.0 - n * 5.0, c + d * 6.0 + n * 5.0, c - d * 6.0 + n * 5.0])
+		_outlined(ci, panel, Color(0.2, 0.35, 0.75), 2.0)
+		ci.draw_line(c - n * 5.0, c + n * 5.0, Color(0.5, 0.7, 1.0, 0.6), 1.0)
+	_circle(ci, p, 5.5, Color(0.85, 0.85, 0.9))
+	ci.draw_circle(p + n * 2.0, 1.8, Color(1.0, 0.8, 0.2))
+
+
+static func _planet(ci: CanvasItem, prop: Dictionary) -> void:
+	var p: Vector2 = prop.p
+	var r: float = prop.r * 0.7
+	var cols := [Color(0.85, 0.5, 0.3), Color(0.4, 0.6, 0.9), Color(0.7, 0.45, 0.85), Color(0.5, 0.75, 0.55)]
+	var c: Color = cols[absi(int(prop.seed)) % cols.size()]
+	var tilt: float = prop.rot
+	# Ring behind, planet, ring in front.
+	var ring := func(front: bool):
+		var pts := PackedVector2Array()
+		for i in 25:
+			var a := PI * (i / 24.0) + (0.0 if front else PI)
+			pts.append(p + Vector2(cos(a) * r * 1.7, sin(a) * r * 0.45).rotated(tilt))
+		ci.draw_polyline(pts, Color(1.0, 0.9, 0.7, 0.7), 4.0, true)
+	ring.call(false)
+	_circle(ci, p, r, c)
+	ci.draw_circle(p + Vector2(r * 0.25, r * 0.25), r * 0.8, c.darkened(0.2))
+	ci.draw_circle(p - Vector2(r * 0.3, r * 0.3), r * 0.35, c.lightened(0.2))
+	ring.call(true)
+
+
+# --- Farm ---------------------------------------------------------------------------
+
+static func _field(ci: CanvasItem, prop: Dictionary) -> void:
+	# A patch of crops in rows (wheat or green crops).
+	var p: Vector2 = prop.p
+	var r: float = prop.r
+	var rot := snappedf(prop.rot, PI * 0.25)
+	var wheat := absi(int(prop.seed)) % 2 == 0
+	var base := Color(0.85, 0.7, 0.3) if wheat else Color(0.3, 0.55, 0.2)
+	var half := Vector2(r, r * 0.7)
+	ci.draw_set_transform(p, rot)
+	ci.draw_rect(Rect2(-half, half * 2.0), base.darkened(0.15))
+	var y := -half.y + 5.0
+	while y < half.y - 3.0:
+		ci.draw_line(Vector2(-half.x + 3, y), Vector2(half.x - 3, y), base.lightened(0.12), 4.0)
+		y += 9.0
+	ci.draw_set_transform(Vector2.ZERO)
+
+
+static func _hay(ci: CanvasItem, prop: Dictionary) -> void:
+	var p: Vector2 = prop.p
+	var r: float = prop.r
+	ci.draw_circle(p + SHADOW_OFFSET * 0.6, r, SHADOW)
+	_circle(ci, p, r, Color(0.88, 0.72, 0.35))
+	ci.draw_arc(p, r * 0.6, 0.0, TAU, 16, Color(0.72, 0.55, 0.25), 2.0, true)
+	ci.draw_arc(p, r * 0.25, 0.0, TAU, 12, Color(0.72, 0.55, 0.25), 2.0, true)
+
+
+static func _barn(ci: CanvasItem, prop: Dictionary) -> void:
+	var p: Vector2 = prop.p
+	var r: float = prop.r
+	var rot := snappedf(prop.rot, PI * 0.5)
+	var half := Vector2(r, r * 0.7)
+	ci.draw_set_transform(p, rot)
+	ci.draw_rect(Rect2(-half + Vector2(8, 10), half * 2.0), SHADOW)
+	ci.draw_rect(Rect2(-half - Vector2(3, 3), half * 2.0 + Vector2(6, 6)), OUTLINE)
+	ci.draw_rect(Rect2(-half, Vector2(half.x * 2.0, half.y)), Color(0.75, 0.18, 0.15))
+	ci.draw_rect(Rect2(Vector2(-half.x, 0), Vector2(half.x * 2.0, half.y)), Color(0.6, 0.13, 0.12))
+	ci.draw_line(Vector2(-half.x, 0), Vector2(half.x, 0), OUTLINE, 2.5)
+	for x in [-half.x * 0.5, 0.0, half.x * 0.5]:
+		ci.draw_line(Vector2(x, -half.y), Vector2(x, half.y), Color(0, 0, 0, 0.18), 2.0)
+	ci.draw_set_transform(Vector2.ZERO)
+
+
+static func _cow(ci: CanvasItem, prop: Dictionary) -> void:
+	var p: Vector2 = prop.p
+	var d := Vector2.from_angle(prop.rot)
+	ci.draw_circle(p + SHADOW_OFFSET * 0.5, 9.0, SHADOW)
+	var body := PackedVector2Array()
+	for i in 12:
+		var a := i * TAU / 12.0
+		body.append(p + d * cos(a) * 10.0 + d.orthogonal() * sin(a) * 6.0)
+	_outlined(ci, body, Color(0.97, 0.97, 0.95), 2.0)
+	ci.draw_circle(p - d * 3.0 + d.orthogonal() * 2.0, 3.0, OUTLINE)
+	ci.draw_circle(p + d * 4.0 - d.orthogonal() * 2.0, 2.2, OUTLINE)
+	_circle(ci, p + d * 12.0, 3.5, Color(0.95, 0.85, 0.8))
+
+
+static func _fence(ci: CanvasItem, prop: Dictionary) -> void:
+	var p: Vector2 = prop.p
+	var d: Vector2 = Vector2.from_angle(snappedf(prop.rot, PI * 0.5)) * prop.r
+	ci.draw_line(p - d, p + d, Color(0.45, 0.3, 0.18), 3.0)
+	for k in 5:
+		var q: Vector2 = (p - d).lerp(p + d, k / 4.0)
+		_circle(ci, q, 2.5, Color(0.55, 0.38, 0.22))
+
+
+# --- Harbour ------------------------------------------------------------------------
+
+static func _container(ci: CanvasItem, prop: Dictionary) -> void:
+	var p: Vector2 = prop.p
+	var r: float = prop.r
+	var rot := snappedf(prop.rot, PI * 0.5)
+	var half := Vector2(r, r * 0.42)
+	ci.draw_set_transform(p, rot)
+	ci.draw_rect(Rect2(-half + Vector2(5, 6), half * 2.0), SHADOW)
+	ci.draw_rect(Rect2(-half - Vector2(2, 2), half * 2.0 + Vector2(4, 4)), OUTLINE)
+	ci.draw_rect(Rect2(-half, half * 2.0), prop.c)
+	var x := -half.x + 4.0
+	while x < half.x - 2.0:
+		ci.draw_line(Vector2(x, -half.y), Vector2(x, half.y), prop.c.darkened(0.2), 1.5)
+		x += 5.0
+	ci.draw_set_transform(Vector2.ZERO)
+
+
+## Container yard: containers lined up in neat rows, like a real port.
+static func _yard(ci: CanvasItem, prop: Dictionary) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = prop.seed
+	var cols := PALETTES["harbor"]
+	var rot := snappedf(prop.rot, PI * 0.5)
+	var r: float = prop.r
+	var box := Vector2(26, 10) # one container
+	var rows := clampi(int(r * 1.4 / (box.y + 3.0)), 3, 7)
+	var per_row := 2 + rng.randi() % 2
+	var origin := Vector2(-(box.x + 3.0) * per_row * 0.5, -(box.y + 3.0) * rows * 0.5)
+	ci.draw_set_transform(prop.p, rot)
+	ci.draw_rect(Rect2(origin - Vector2(4, 4), Vector2((box.x + 3.0) * per_row + 5.0, (box.y + 3.0) * rows + 5.0)), Color(0.28, 0.3, 0.33))
+	for row in rows:
+		for c in per_row:
+			if rng.randf() < 0.12:
+				continue # a gap in the stack
+			var q := origin + Vector2(c * (box.x + 3.0), row * (box.y + 3.0))
+			var col: Color = cols[rng.randi() % cols.size()]
+			ci.draw_rect(Rect2(q + Vector2(3, 3), box), SHADOW)
+			ci.draw_rect(Rect2(q - Vector2(1.5, 1.5), box + Vector2(3, 3)), OUTLINE)
+			ci.draw_rect(Rect2(q, box), col)
+			var x := 3.0
+			while x < box.x - 1.0:
+				ci.draw_line(q + Vector2(x, 0), q + Vector2(x, box.y), col.darkened(0.2), 1.2)
+				x += 4.0
+	ci.draw_set_transform(Vector2.ZERO)
+
+
+static func _boat(ci: CanvasItem, prop: Dictionary) -> void:
+	# A small boat in its own patch of water.
+	var p: Vector2 = prop.p
+	var r: float = prop.r
+	_outlined(ci, _blob(p, r * 1.2, prop.seed, 14, 0.12), Color(0.25, 0.45, 0.62), 2.0)
+	ci.draw_colored_polygon(_blob(p, r * 1.0, prop.seed, 14, 0.12), Color(0.12, 0.3, 0.5))
+	var d := Vector2.from_angle(prop.rot)
+	var n := d.orthogonal()
+	var hull := PackedVector2Array([p + d * r * 0.85, p + d * r * 0.3 + n * r * 0.32, p - d * r * 0.7 + n * r * 0.3,
+		p - d * r * 0.7 - n * r * 0.3, p + d * r * 0.3 - n * r * 0.32])
+	_outlined(ci, hull, Color(0.95, 0.95, 0.95), 2.5)
+	var cab := PackedVector2Array([p + n * r * 0.18, p - d * r * 0.35 + n * r * 0.18, p - d * r * 0.35 - n * r * 0.18, p - n * r * 0.18])
+	ci.draw_colored_polygon(cab, prop.c)
+	ci.draw_line(p - d * r * 1.1, p - d * r * 1.6, Color(1, 1, 1, 0.5), 3.0)
+
+
+static func _crane(ci: CanvasItem, prop: Dictionary) -> void:
+	var p: Vector2 = prop.p
+	var d := Vector2.from_angle(prop.rot)
+	var n := d.orthogonal()
+	var arm: float = prop.r * 1.4
+	ci.draw_line(p + Vector2(8, 10), p + d * arm + Vector2(8, 10), SHADOW, 9.0)
+	ci.draw_line(p, p + d * arm, OUTLINE, 9.0)
+	ci.draw_line(p, p + d * arm, Color(0.95, 0.7, 0.1), 5.0)
+	for k in range(1, 6):
+		var q: Vector2 = p + d * arm * k / 6.0
+		ci.draw_line(q - n * 2.5, q + n * 2.5, Color(0.55, 0.4, 0.05), 1.5)
+	var base := PackedVector2Array([p + Vector2(-9, -9), p + Vector2(9, -9), p + Vector2(9, 9), p + Vector2(-9, 9)])
+	_outlined(ci, base, Color(0.85, 0.6, 0.08), 3.0)
+	_circle(ci, p + d * arm, 3.0, Color(0.3, 0.3, 0.32))
+
+
+static func _crate(ci: CanvasItem, prop: Dictionary) -> void:
+	var p: Vector2 = prop.p
+	var r: float = prop.r
+	ci.draw_rect(Rect2(p - Vector2(r, r) + Vector2(3, 4), Vector2(r, r) * 2.0), SHADOW)
+	ci.draw_rect(Rect2(p - Vector2(r, r) - Vector2(1.5, 1.5), Vector2(r, r) * 2.0 + Vector2(3, 3)), OUTLINE)
+	ci.draw_rect(Rect2(p - Vector2(r, r), Vector2(r, r) * 2.0), Color(0.65, 0.45, 0.25))
+	ci.draw_line(p - Vector2(r, r), p + Vector2(r, r), Color(0.45, 0.3, 0.15), 2.0)
 
 
 static func _tires(ci: CanvasItem, prop: Dictionary) -> void:

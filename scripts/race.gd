@@ -10,8 +10,16 @@ const Confetti = preload("res://scripts/confetti.gd")
 const RainLayer = preload("res://scripts/rain_layer.gd")
 const TutorialCoach = preload("res://scripts/tutorial_coach.gd")
 const TimeTrial = preload("res://scripts/time_trial.gd")
+const StarRow = preload("res://scripts/star_row.gd")
+const FontWarmer = preload("res://scripts/font_warmer.gd")
+const CE = preload("res://scripts/career_events.gd")
 
-enum Phase { COUNTDOWN, RACING, RESULTS }
+enum Phase { INTRO, COUNTDOWN, RACING, RESULTS }
+
+const INTRO_TIME := 2.4 # camera sweep over the track before the lights
+# Zoom of the sweep. The track is baked once at the normal size (a sharper second
+# bake just for the intro cost phones a freeze and a lot of memory), so keep it mild.
+const INTRO_ZOOM := 1.4
 
 const COUNTDOWN_TIME := 3.3 # red lights at 0.3s, 1.3s, 2.3s, green at 3.3s
 const FINISH_GRACE := 15.0 # seconds the others get after the winner crosses the line
@@ -57,6 +65,7 @@ var _rocket_hits: Array[int] = [] # cars each racer knocked out with rockets
 var _was_last: Array[bool] = [] # was last after lap 1 (COMEBACK KID)
 var _weather := "clear"
 # Solo modes.
+var _intro_t := 0.0
 var coach: TutorialCoach
 var trial: TimeTrial
 
@@ -71,6 +80,7 @@ func _ready() -> void:
 		world.powerups.effects = world.effects
 		world.powerups.picked.connect(_on_pickup)
 		world.powerups.rocket_hit.connect(_on_rocket_hit)
+		world.powerups.mine_hit.connect(_on_mine_hit)
 	var weather := Game.pick_weather()
 	_weather = weather
 	world.set_weather(weather)
@@ -87,6 +97,9 @@ func _ready() -> void:
 		_was_last.append(false)
 		car.near_miss.connect(_on_near_miss)
 		car.shield_used.connect(_on_shield_used)
+		car.jumped.connect(_on_jumped)
+		car.landed.connect(_on_landed)
+		car.splashed.connect(_on_splashed)
 		if Game.is_cpu(car.index):
 			car.engine_gain = -7.0
 
@@ -102,13 +115,23 @@ func _ready() -> void:
 	_sub_label.text = world.map.title.to_upper()
 	if weather == "rain":
 		_sub_label.text += "\nRAIN - SLIPPERY CORNERS!"
-		root_ui.add_child(RainLayer.new())
+		var rain := RainLayer.new()
+		root_ui.add_child(rain)
+		Game.bleed(rain)
 		root_ui.move_child(root_ui.get_child(root_ui.get_child_count() - 1), 0)
 		Sfx.play_ambient(Sfx.rain)
 	elif weather == "night":
 		_sub_label.text += "\nNIGHT RACE"
 	if Game.is_championship():
 		_sub_label.text = "RACE %d OF %d\n%s" % [Game.cup_race + 1, Game.races, _sub_label.text]
+	var king := Game.king()
+	if king >= 0 and king < cars.size() and not Game.is_career():
+		_sub_label.text += "\nKING: %s  •  %d WINS IN A ROW" % [Game.racer_name(king), Game.streak_wins]
+		if Game.num_players > 1:
+			_sub_label.text += "\nBEAT THEM FOR +%d COINS!" % Game.KING_SLAYER_COINS
+	if Game.is_career():
+		var e: Dictionary = CE.event(Game.career_event)
+		_sub_label.text = "EVENT %d  •  %s\n%s\nGOAL: %s" % [Game.career_event + 1, e.title, _sub_label.text, CE.goal_text(Game.career_event)]
 	if Game.tutorial:
 		coach = TutorialCoach.new()
 		add_child(coach)
@@ -119,8 +142,16 @@ func _ready() -> void:
 		add_child(trial)
 		trial.setup(self)
 		_sub_label.text = "TIME TRIAL\n" + _sub_label.text
+	# Intro sweep (skipped in tests and the tutorial).
+	var intro := not (Game.debug_bots or Game.debug_log or Game.tutorial or Game.debug_no_intro)
+	if intro:
+		phase = Phase.INTRO
+		world.hold_view = true
 	_fit_world()
 	get_viewport().size_changed.connect(_fit_world)
+	if intro:
+		_lights.modulate.a = 0.0
+		_update_intro(0.0)
 	Sfx.play_music("")
 
 
@@ -131,19 +162,24 @@ func _exit_tree() -> void:
 
 
 func _fit_world() -> void:
-	var screen := get_viewport_rect().size
+	var sr := Game.safe_rect()
 	var band := PlayerPads.band_height()
-	var keepouts := PlayerPads.keepouts(screen, cars.size())
-	if screen.x > screen.y:
-		world.fit(Rect2(band, 12.0, screen.x - band * 2.0, screen.y - 24.0), 1.6, keepouts)
+	var keepouts := PlayerPads.keepouts(sr, cars.size())
+	if sr.size.x > sr.size.y:
+		world.fit(Rect2(sr.position + Vector2(band, 12.0), sr.size - Vector2(band * 2.0, 24.0)), 1.6, keepouts)
 	else:
-		world.fit(Rect2(12.0, band, screen.x - 24.0, screen.y - band * 2.0), 1.6, keepouts)
+		world.fit(Rect2(sr.position + Vector2(12.0, band), sr.size - Vector2(24.0, band * 2.0)), 1.6, keepouts)
 
 
 func _process(delta: float) -> void:
 	if _paused:
 		return
 	match phase:
+		Phase.INTRO:
+			_intro_t += delta
+			_update_intro(_intro_t / INTRO_TIME)
+			if _intro_t >= INTRO_TIME or _intro_skip():
+				_end_intro()
 		Phase.COUNTDOWN:
 			_countdown -= delta
 			var elapsed := COUNTDOWN_TIME - _countdown
@@ -176,6 +212,10 @@ func _process(delta: float) -> void:
 	pads.set_places(places)
 	_call_overtakes(places)
 	if world.powerups and phase == Phase.RACING:
+		# Lap 1 is a clean race: the boxes appear once the leader starts lap 2.
+		if not world.powerups.active and order[0].progress >= world.track.length:
+			world.powerups.activate()
+			Sfx.play(Sfx.pickup, -8.0, 0.8)
 		world.powerups.update_cars(places)
 	if phase == Phase.RACING:
 		if coach:
@@ -190,7 +230,7 @@ func _process(delta: float) -> void:
 			if car.state == Car.State.RACING and car.speed > 350.0 and randf() < delta * 14.0:
 				var rear: Vector2 = car.position - Vector2.from_angle(car.rotation) * 22.0
 				world.effects.puff(rear, Color(0.8, 0.86, 0.95, 0.3), randf_range(5, 9), Vector2.from_angle(randf() * TAU) * 30.0, 0.5)
-	world.effects.leader = order[0] if phase != Phase.COUNTDOWN and cars.size() > 1 else null
+	world.effects.leader = order[0] if (phase == Phase.RACING or phase == Phase.RESULTS) and cars.size() > 1 else null
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -201,10 +241,16 @@ func _unhandled_input(event: InputEvent) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_toggle_pause()
+	# Phone sent to the background (or browser tab hidden): pause the race.
+	elif what == NOTIFICATION_APPLICATION_PAUSED or (what == NOTIFICATION_APPLICATION_FOCUS_OUT and (OS.has_feature("mobile") or OS.has_feature("web"))):
+		if not _paused and phase != Phase.RESULTS and is_node_ready():
+			_toggle_pause()
 
 
 func _is_held(i: int) -> bool:
 	var car = cars[i]
+	if Game.debug_coast and world.track.has_jump() and world.track.dist_to_lip(car.progress) < 130.0 and car.speed > 380.0:
+		return false
 	if Game.debug_bots:
 		if car.bot_wants_nitro():
 			car.fire_nitro()
@@ -236,16 +282,44 @@ func _update_catch_up(order: Array) -> void:
 		car.nitro_fill_mult = 1.0 + 0.7 * behind + 0.6 * gap
 
 
+## Camera glides along the second half of the lap to the grid, then zooms out.
+func _update_intro(f: float) -> void:
+	var L: float = world.track.length
+	var e := 1.0 - pow(1.0 - clampf(f, 0.0, 1.0), 2.0) # ease out
+	var p: Vector2 = world.track.point_at(L * (0.45 + 0.55 * e) - 30.0, 0.0)
+	world.view_at(p, INTRO_ZOOM, smoothstep(0.6, 1.0, f))
+
+
+func _intro_skip() -> bool:
+	if _intro_t < 0.3:
+		return false
+	for i in mini(Game.num_players, cars.size()):
+		if Input.is_action_pressed(Game.action_name(i)) or pads.is_held(i):
+			return true
+	return false
+
+
+func _end_intro() -> void:
+	world.end_view()
+	phase = Phase.COUNTDOWN
+	create_tween().tween_property(_lights, "modulate:a", 1.0, 0.2)
+
+
 func _start_race() -> void:
 	phase = Phase.RACING
+	Game.buzz(40, 0.5) # GO!
 	for car in cars:
 		car.state = Car.State.RACING
 	world.effects.show_tags = false
+	var cpus := cars.filter(func(c): return Game.is_cpu(c.index))
+	if not cpus.is_empty():
+		_cpu_says(cpus[randi() % cpus.size()], "start", 1.0)
 	_lights.set_state(3, true)
 	_pop(_lights, 1.2)
 	Sfx.play(Sfx.go, -1.0)
 	Sfx.play(Sfx.cheer, -6.0)
-	Sfx.play_music("race")
+	Sfx.set_music_pitch(1.0)
+	Sfx.play_music("race%d" % (maxi(Game.current_map, 0) % Sfx.RACE_THEMES.size()))
 	_flash("GO!", 0.5, Color(0.3, 1.0, 0.5))
 	_sub_label.text = ""
 	if coach:
@@ -265,6 +339,12 @@ func _check_laps() -> void:
 			if Game.debug_bots or Game.debug_log:
 				print("P%d lap %d at %.2fs (crashes %d, fps %d)" % [i + 1, done, race_time, car.crashes, Engine.get_frames_per_second()])
 			_on_lap_done(car, done)
+			if done == Game.race_laps() - 1 and not _final_lap_called and Game.race_laps() > 1 and not trial:
+				_final_lap_called = true
+				_flash("FINAL LAP!", 0.9, Color(1.0, 0.85, 0.2))
+				_music_pitch = 1.08
+				Sfx.set_music_pitch(_music_pitch)
+				Sfx.play(Sfx.cheer, -3.0)
 			if car.state == Car.State.RACING and done < Game.race_laps():
 				if done == Game.race_laps() - 1:
 					pads.toast(i, "FINAL LAP!", Color(1.0, 0.85, 0.2))
@@ -312,8 +392,13 @@ func _announce_winner(car) -> void:
 	var i: int = car.index
 	var who: String = Game.PLAYER_NAMES[i] if Game.is_cpu(i) else "P%d" % (i + 1)
 	_flash("%s WINS!" % who, 1.4, car.color)
+	world.effects.celebrate(car)
+	_cpu_says(car, "win")
+	if Game.debug_shot_on == "win":
+		Game.debug_capture(1.0)
 	Sfx.play(Sfx.fanfare)
 	_confetti.burst([car.color, Color.WHITE, Color(1.0, 0.85, 0.2)], 90)
+	Game.buzz_for(i, 260, 0.8)
 
 
 # --- Commentary ---------------------------------------------------------------
@@ -331,8 +416,11 @@ func _call_overtakes(places: Array[int]) -> void:
 		_last_callout[i] = race_time
 		if place == 1:
 			pads.toast(i, "TOOK THE LEAD!", Color(1.0, 0.85, 0.2))
+			_crowd()
+			_cpu_says(car, "lead", 0.7)
 		else:
 			pads.toast(i, "OVERTAKE!", Color(0.5, 1.0, 0.6))
+			_cpu_says(car, "overtake", 0.4)
 
 
 func _on_lap_done(car, done: int) -> void:
@@ -408,7 +496,7 @@ func _end_photo_finish() -> void:
 		return
 	_photo = false
 	Engine.time_scale = 1.0
-	Sfx.set_music_pitch(1.0)
+	Sfx.set_music_pitch(_music_pitch)
 	_announce_winner(_photo_winner)
 
 
@@ -426,6 +514,11 @@ func _on_pickup(car, item: String) -> void:
 	if coach:
 		coach.on_pickup()
 	Sfx.play(Sfx.pickup, -4.0)
+	Game.buzz_for(i, 20, 0.3)
+	if Game.debug_log:
+		print("ITEM %.1f %s %s" % [race_time, _short_name(i), item])
+	if Game.debug_shot_on == item and race_time > 3.0:
+		Game.debug_capture({"lightning": 0.12, "mine": 0.9}.get(item, 0.1))
 	match item:
 		"shield":
 			car.shield = true
@@ -444,14 +537,54 @@ func _on_pickup(car, item: String) -> void:
 			car.add_nitro(1.0)
 			car.mega = true
 			pads.toast(i, "MEGA NITRO!", Car.NITRO_COLOR, "" if Game.is_cpu(i) else "DOUBLE-TAP!")
+		"lightning":
+			var zapped := 0
+			for c in world.powerups.cars_ahead(car):
+				world.effects.bolt(c)
+				if c.zap():
+					zapped += 1
+					_cpu_says(c, "hit", 0.5)
+					pads.toast(c.index, "ZAPPED!", Color(1.0, 0.9, 0.3), "by " + _short_name(i))
+					Game.buzz_for(c.index, 90, 0.7)
+			pads.toast(i, "LIGHTNING!", Color(1.0, 0.9, 0.3), "zapped %d car%s" % [zapped, "" if zapped == 1 else "s"])
+			_flash_rect.color = Color(1, 1, 0.85, 0.35)
+			create_tween().tween_property(_flash_rect, "color:a", 0.0, 0.3)
+			Sfx.play(Sfx.crash, -4.0, 1.7)
+			world.shake = maxf(world.shake, 0.2)
+		"mine":
+			world.powerups.drop_mines(car)
+			pads.toast(i, "MINES DROPPED!", Color(1.0, 0.45, 0.3), "behind you")
+			Sfx.play(Sfx.beep, -6.0, 0.7)
+
+
+
+func _on_mine_hit(target, owner) -> void:
+	if Game.debug_perf:
+		print("MINEHIT at %.2fs" % (Time.get_ticks_msec() / 1000.0))
+	Sfx.play(Sfx.crash, -2.0, 0.9)
+	world.shake = maxf(world.shake, 0.3)
+	if target.rocket_hit():
+		_cpu_says(target, "hit", 0.8)
+		_crowd(true)
+		Game.buzz_for(target.index, 150, 1.0)
+		pads.toast(target.index, "MINE!", Color(1.0, 0.45, 0.2), "dropped by " + _short_name(owner.index))
+		pads.toast(owner.index, "MINE HIT!", Color(1.0, 0.85, 0.2), _short_name(target.index) + " went boom")
+		_rocket_hits[owner.index] += 1
+	else:
+		pads.toast(owner.index, "BLOCKED!", Color(0.45, 0.9, 1.0), _short_name(target.index) + " had a shield")
 
 
 func _on_rocket_hit(target, shooter) -> void:
+	if Game.debug_perf:
+		print("ROCKETHIT at %.2fs" % (Time.get_ticks_msec() / 1000.0))
 	if Game.debug_log or Game.debug_bots:
 		print("ROCKET %s -> %s  shield=%s" % [_short_name(shooter.index), _short_name(target.index), target.shield])
 	Sfx.play(Sfx.crash, -2.0, 0.8)
 	world.shake = maxf(world.shake, 0.3)
 	if target.rocket_hit():
+		_cpu_says(target, "hit", 0.8)
+		_crowd(true)
+		Game.buzz_for(target.index, 150, 1.0)
 		pads.toast(target.index, "BOOM!", Color(1.0, 0.45, 0.2), "hit by " + _short_name(shooter.index))
 		pads.toast(shooter.index, "DIRECT HIT!", Color(1.0, 0.85, 0.2))
 		_rocket_hits[shooter.index] += 1
@@ -460,7 +593,7 @@ func _on_rocket_hit(target, shooter) -> void:
 
 
 func _short_name(i: int) -> String:
-	return Game.PLAYER_NAMES[i] if Game.is_cpu(i) else "P%d" % (i + 1)
+	return Game.short_name(i)
 
 
 func _on_shield_used(car) -> void:
@@ -470,14 +603,84 @@ func _on_shield_used(car) -> void:
 	Sfx.play(Sfx.beep, -4.0, 1.5)
 
 
+var _last_said := -10.0
+var _music_pitch := 1.0
+var _final_lap_called := false
+var _last_roar := -10.0
+
+
+## Crowd reaction from the grandstand; `ooh` is the low "ooooh" for big knockouts.
+func _crowd(ooh := false) -> void:
+	if race_time - _last_roar < 1.5:
+		return
+	_last_roar = race_time
+	if ooh:
+		Sfx.play(Sfx.cheer, -7.0, 0.72)
+	else:
+		Sfx.play(Sfx.cheer, -6.0, randf_range(1.0, 1.1))
+var _said_at: Array[float] = [-10.0, -10.0, -10.0, -10.0]
+
+
+## A CPU driver says a line for `moment` in a speech bubble (rate-limited so the
+## screen never fills up with chatter).
+func _cpu_says(car, moment: String, chance := 0.6) -> void:
+	var i: int = car.index
+	if not Game.is_cpu(i) or Game.debug_bots or coach or trial:
+		return
+	var urgent := moment == "win"
+	if not urgent and (race_time - _last_said < 2.5 or race_time - _said_at[i] < 7.0 or randf() > chance):
+		return
+	var text: String = Game.Drivers.line(Game.driver(i), moment)
+	if text == "":
+		return
+	_last_said = race_time
+	_said_at[i] = race_time
+	world.effects.say(car, text)
+
+
+func _on_jumped(car, big: bool) -> void:
+	if Game.debug_log:
+		print("JUMP %.2f %s speed %d" % [race_time, _short_name(car.index), int(car.speed)])
+	if Game.debug_shot_on == "jump" and race_time > 2.0:
+		Game.debug_capture(0.13)
+	Sfx.play(Sfx.boost, -8.0, 0.8)
+	if big:
+		pads.toast(car.index, "BIG AIR!", Color(0.5, 0.9, 1.0))
+		_crowd()
+	_cpu_says(car, "jump", 0.25)
+
+
+func _on_landed(car) -> void:
+	Sfx.play(Sfx.crash, -16.0, 1.9)
+	world.effects.land_dust(car.position)
+	world.shake = maxf(world.shake, 0.06)
+	Game.buzz_for(car.index, 45, 0.55)
+
+
+func _on_splashed(car) -> void:
+	if Game.debug_log:
+		print("SPLASH %.2f %s" % [race_time, _short_name(car.index)])
+	if Game.debug_shot_on == "splash":
+		Game.debug_capture(0.25)
+	world.effects.splash(car.position)
+	Sfx.play(Sfx.crash, -4.0, 0.55)
+	Sfx.play(Sfx.boost, -8.0, 0.5) # whoosh of water
+	pads.toast(car.index, "SPLASH!", Color(0.45, 0.8, 1.0), "too slow for the jump")
+	_crowd(true)
+	_cpu_says(car, "splash", 0.8)
+	Game.buzz_for(car.index, 180, 1.0)
+
+
 func _on_crash(car) -> void:
+	if Game.debug_perf:
+		print("CRASH at %.2fs" % (Time.get_ticks_msec() / 1000.0))
+	_cpu_says(car, "crash", 0.5)
 	if coach:
 		coach.on_crash()
 	world.shake = 0.28
 	pads.toast(car.index, "CRASH!", Color(1.0, 0.35, 0.3))
 	Sfx.play(Sfx.crash, -3.0, randf_range(0.9, 1.1))
-	if Game.is_touch():
-		Input.vibrate_handheld(120)
+	Game.buzz_for(car.index, 130, 1.0)
 
 
 func _on_boost(car) -> void:
@@ -490,11 +693,13 @@ func _on_boost(car) -> void:
 	pads.toast(car.index, "NITRO!", Car.NITRO_COLOR)
 	world.effects.shockwave(car.position, Car.NITRO_COLOR)
 	world.shake = maxf(world.shake, 0.12)
+	Game.buzz_for(car.index, 60, 0.6)
 
 
 func _on_nitro_ready(car) -> void:
 	pads.toast(car.index, "NITRO READY!", Car.NITRO_COLOR, "" if Game.is_cpu(car.index) else "DOUBLE-TAP!")
 	Sfx.play(Sfx.lap, -8.0, 1.5)
+	Game.buzz_for(car.index, 25, 0.35) # light tap: nitro is ready
 
 
 func _laps_done(car) -> int:
@@ -534,12 +739,15 @@ func _build_ui() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.theme = Game.make_theme()
 	layer.add_child(root)
+	Game.fit_to_safe(root) # buttons and text stay clear of notches and camera holes
 	root_ui = root
 
 	pads = PlayerPads.new()
 	pads.num_players = cars.size()
 	pads.humans = mini(Game.num_players, cars.size()) if not Game.debug_bots else 0
 	pads.laps = Game.race_laps()
+	pads.king = Game.king() if not Game.is_career() else -1
+	pads.king_wins = Game.streak_wins
 	pads.cars = cars
 	pads.track_length = world.track.length
 	pads.pause_pressed.connect(_toggle_pause)
@@ -567,6 +775,9 @@ func _build_ui() -> void:
 	box.add_child(_big_label)
 	_sub_label = _make_label(34, 10)
 	box.add_child(_sub_label)
+	# Big call-outs (GO!, FINAL LAP!, ...) rasterize while loading, not mid-race.
+	var label_font := _big_label.get_theme_font("font")
+	root_ui.add_child(FontWarmer.new([[label_font, 92, 16], [label_font, 34, 10]]))
 
 	_results = _make_overlay(root)
 	_results_box = _results.get_child(0).get_child(0).get_child(0)
@@ -578,11 +789,12 @@ func _build_ui() -> void:
 
 	_confetti = Confetti.new()
 	root.add_child(_confetti)
+	Game.bleed(_confetti)
 	_flash_rect = ColorRect.new()
 	_flash_rect.color = Color(1, 1, 1, 0)
-	_flash_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_flash_rect)
+	Game.bleed(_flash_rect)
 
 
 func _make_label(font_size: int, outline: int, text := "") -> Label:
@@ -624,9 +836,10 @@ func _make_overlay(root: Control) -> Control:
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.visible = false
 	root.add_child(overlay)
+	Game.bleed(overlay) # dim the whole screen...
 	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
+	Game.fit_to_safe(center) # ...but keep the panel in the safe area
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", Game.make_style(Color(0.08, 0.09, 0.13, 0.97), 28, Color(0.02, 0.03, 0.05), 6))
 	center.add_child(panel)
@@ -677,15 +890,23 @@ func _show_results() -> void:
 	var heading: String = world.map.title.to_upper()
 	if cup:
 		heading = "RACE %d OF %d  •  %s" % [Game.cup_race, Game.races, heading]
+	elif Game.is_career():
+		heading = "EVENT %d  •  %s" % [Game.career_event + 1, CE.event(Game.career_event).title]
 	box.add_child(_make_label(24, 6, heading))
 	var title := _make_label(52, 10, "%s WINS!" % Game.racer_name(winner.index))
 	title.add_theme_color_override("font_color", winner.color)
 	box.add_child(title)
 	var rewards := _record_profile(order)
+	var streak := _streak_line(winner.index)
+	if streak != "":
+		rewards = streak + ("  •  " + rewards if rewards != "" else "")
 	if rewards != "":
 		var r := _wrap_label(rewards)
 		r.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
 		box.add_child(r)
+	var career_bits := -1
+	if Game.is_career():
+		career_bits = _career_result(order)
 	for rank in order.size():
 		box.add_child(_result_row(rank, order[rank], given[order[rank].index] if cup else -1))
 
@@ -697,21 +918,58 @@ func _show_results() -> void:
 	elif cup:
 		next_text = "SEE THE CHAMPION!"
 		next_fn = func(): get_tree().change_scene_to_file("res://scenes/podium.tscn")
-	var again := _make_button(next_text, next_fn, true)
-	var menu := _make_button("MENU", _go_menu)
+	var buttons: Array[Button] = []
 	box.add_child(_make_label(8, 0))
-	box.add_child(again)
+	if career_bits >= 0:
+		# Career: NEXT EVENT once it's unlocked, RETRY, and back to the ladder.
+		var ev := Game.career_event
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		var retry := _make_button("RETRY", func():
+			Game.start_career(ev)
+			get_tree().reload_current_scene(), career_bits & CE.PODIUM == 0)
+		row.add_child(retry)
+		buttons.append(retry)
+		if ev + 1 < CE.count() and Profile.career_unlocked(ev + 1):
+			var nxt := _make_button("NEXT EVENT", func():
+				Game.start_career(ev + 1)
+				get_tree().reload_current_scene(), true)
+			row.add_child(nxt)
+			buttons.append(nxt)
+		for b in row.get_children():
+			b.custom_minimum_size.x = 214
+		box.add_child(row)
+	elif cup:
+		var again := _make_button(next_text, next_fn, true)
+		box.add_child(again)
+		buttons.append(again)
+	else:
+		# Single race: REMATCH (same track again) or a new random track.
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		var rematch := _make_button("REMATCH", func():
+			Game.retry_map = Game.current_map
+			Game.start_cup()
+			get_tree().reload_current_scene(), true)
+		var fresh := _make_button("NEW TRACK", next_fn)
+		for b in [rematch, fresh]:
+			b.custom_minimum_size.x = 214
+			row.add_child(b)
+			buttons.append(b)
+		box.add_child(row)
+	var menu := _make_button("CAREER" if career_bits >= 0 else "MENU", _go_menu)
 	box.add_child(menu)
-	if not cup:
-		box.add_child(_make_label(18, 2, "Next race is on a random track"))
+	buttons.append(menu)
 	if Game.is_landscape_layout():
 		# Landscape is only 720 tall: tighten the panel so it fits with room to spare.
 		box.add_theme_constant_override("separation", 8)
-		again.custom_minimum_size.y = 70
-		menu.custom_minimum_size.y = 64
+		for b in buttons:
+			b.custom_minimum_size.y = 64
 	# Short lockout so players still mashing their buttons don't skip the results.
-	again.disabled = true
-	menu.disabled = true
+	for b in buttons:
+		b.disabled = true
 	_results.visible = true
 	_pop(_results.get_child(0).get_child(0), 1.1)
 	_confetti.burst([winner.color, Color.WHITE, Color(1.0, 0.85, 0.2), Color(0.3, 0.9, 1.0)], 160)
@@ -720,8 +978,24 @@ func _show_results() -> void:
 			print("RESULT %s time %.2f crashes %d points %d" % [Game.racer_name(car.index), car.finish_time, car.crashes, Game.cup_points[car.index]])
 		get_tree().quit()
 	await get_tree().create_timer(1.2).timeout
-	again.disabled = false
-	menu.disabled = false
+	for b in buttons:
+		b.disabled = false
+
+
+## Updates the win streak and pays its coins; returns what to announce.
+func _streak_line(winner: int) -> String:
+	var r := Game.note_winner(winner)
+	if int(r.coins) > 0 and not Game.debug_bots:
+		Profile.add_coins(int(r.coins))
+		Profile.save()
+	var king_before: int = r.king_before
+	if r.slain:
+		return "%s BEAT THE KING! +%d COINS" % [Game.racer_name(winner), int(r.coins)]
+	if int(r.streak) >= 2:
+		return "%s IS KING! %d WINS IN A ROW +%d COINS" % [Game.racer_name(winner), int(r.streak), int(r.coins)]
+	if king_before >= 0 and king_before != winner:
+		return "%s'S STREAK IS OVER" % Game.racer_name(king_before)
+	return ""
 
 
 ## Saves stats / records / coins for the human players; returns a one-line summary.
@@ -756,6 +1030,54 @@ func _record_profile(order: Array) -> String:
 	if not parts.is_empty():
 		Sfx.play(Sfx.lap, -4.0, 1.2)
 	return "  •  ".join(parts)
+
+
+## Career: works out P1's stars, saves them and adds the star row to the results.
+## Returns the stars earned this race (bitmask).
+func _career_result(order: Array) -> int:
+	var ev := Game.career_event
+	var car = cars[0]
+	var margin := 99.0
+	if finish_order.size() >= 2:
+		margin = finish_order[1].finish_time - finish_order[0].finish_time
+	var stats := {"place": order.find(car) + 1, "crashes": car.crashes, "nitros": _nitros[0],
+		"close_calls": _close[0], "perfect_laps": _perfect[0], "rocket_hits": _rocket_hits[0], "margin": margin}
+	var bits := CE.stars_for(ev, stats)
+	var result := Profile.record_career(ev, bits) if not Game.debug_bots else {"new": 0, "coins": 0}
+	if Game.debug_log:
+		print("CAREER event %d stats %s stars %d new %d" % [ev + 1, str(stats), bits, int(result.new)])
+	var h := HBoxContainer.new()
+	h.alignment = BoxContainer.ALIGNMENT_CENTER
+	h.add_theme_constant_override("separation", 18)
+	h.add_child(StarRow.new(bits, 40, int(result.new)))
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	var lines := [["PODIUM", CE.PODIUM], ["WIN", CE.WIN], ["GOAL: " + CE.goal_text(ev), CE.GOAL]]
+	for pair in lines:
+		var got: bool = bits & int(pair[1]) != 0
+		var l := _make_label(17, 4, pair[0])
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		l.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3) if got else Color(1, 1, 1, 0.45))
+		v.add_child(l)
+	h.add_child(v)
+	_results_box.add_child(h)
+	var msg := ""
+	if int(result.coins) > 0:
+		msg = "+%d COINS FOR NEW STARS" % int(result.coins)
+	if bits & CE.PODIUM and ev + 1 < CE.count() and int(result.new) & CE.PODIUM:
+		msg += ("  •  " if msg != "" else "") + "EVENT %d UNLOCKED!" % (ev + 2)
+	elif bits & CE.PODIUM == 0:
+		msg = "Finish on the podium to unlock the next event"
+	if msg != "":
+		var m := _wrap_label(msg)
+		m.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4) if bits & CE.PODIUM else Color(1, 0.6, 0.5))
+		_results_box.add_child(m)
+	var awards := Profile.take_recent_achievements()
+	if not awards.is_empty():
+		var a := _wrap_label(("NEW AWARD: " if awards.size() == 1 else "NEW AWARDS: ") + ", ".join(awards))
+		a.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+		_results_box.add_child(a)
+	return bits
 
 
 ## Results for the tutorial and the time trial (just P1).
@@ -875,4 +1197,7 @@ func _result_row(rank: int, car, points := -1) -> Control:
 
 
 func _go_menu() -> void:
+	if Game.is_career():
+		get_tree().change_scene_to_file("res://scenes/career.tscn")
+		return
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

@@ -45,7 +45,7 @@ func _ready() -> void:
 	_music_player = AudioStreamPlayer.new()
 	_music_player.volume_db = -13.0
 	add_child(_music_player)
-	_music_task = WorkerThreadPool.add_task(_render_all_music)
+	_start_next_render()
 	for i in 10:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
@@ -64,7 +64,7 @@ func play(stream: AudioStream, volume_db := 0.0, pitch := 1.0) -> void:
 			return
 
 
-## Switches the background music ("race", "menu" or "" for silence).
+## Switches the background music ("menu", "race0".."race2" or "" for silence).
 func play_music(name: String) -> void:
 	_wanted_music = name
 	_sync_music()
@@ -82,11 +82,30 @@ func play_ambient(stream: AudioStream) -> void:
 ## Slows the music down (used for the slow-motion photo finish).
 func set_music_pitch(pitch: float) -> void:
 	_music_player.pitch_scale = pitch
+	music_pitch = pitch
+
+
+var music_pitch := 1.0
 
 
 func set_music_enabled(on: bool) -> void:
 	music_enabled = on
 	_sync_music()
+
+
+## Silence everything while the game is in the background (phone Home button, app
+## switch, browser tab hidden) and bring it back when the player returns.
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT:
+			if what == NOTIFICATION_APPLICATION_PAUSED or OS.has_feature("mobile") or OS.has_feature("web"):
+				_set_background(true)
+		NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN:
+			_set_background(false)
+
+
+func _set_background(on: bool) -> void:
+	AudioServer.set_bus_mute(0, on)
 
 
 func _exit_tree() -> void:
@@ -100,6 +119,7 @@ func _process(_delta: float) -> void:
 		WorkerThreadPool.wait_for_task_completion(_music_task)
 		_music_task = -1
 		_sync_music()
+		_start_next_render()
 
 
 func _sync_music() -> void:
@@ -109,14 +129,32 @@ func _sync_music() -> void:
 		_music_player.stream = null
 	elif _music_player.stream != stream or not _music_player.playing:
 		_music_player.stream = stream
-		_music_player.pitch_scale = 1.0
+		_music_player.pitch_scale = music_pitch
 		_music_player.play()
 
 
-func _render_all_music() -> void:
-	var race := _render_race_music()
-	var menu := _render_menu_music()
-	_music = {"race": race, "menu": menu}
+var _render_queue := ["menu", "race0", "race1", "race2"]
+
+
+## Music is rendered one track at a time (menu first) on a worker thread. On the
+## single-threaded web build each task runs in one go, so splitting them up keeps
+## any single pause short.
+func _start_next_render() -> void:
+	if _render_queue.is_empty():
+		return
+	var name: String = _render_queue.pop_front()
+	_music_task = WorkerThreadPool.add_task(_render_one.bind(name))
+
+
+func _render_one(name: String) -> void:
+	var stream: AudioStreamWAV
+	if name == "menu":
+		stream = _render_menu_music()
+	else:
+		stream = _render_race_music(RACE_THEMES[int(name.substr(4))])
+	var music := _music.duplicate()
+	music[name] = stream
+	_music = music
 
 
 ## A looping engine player for one car; the caller changes its pitch with speed.
@@ -280,26 +318,49 @@ func _hit(start: float, length: float, vol: float, bright: float) -> void:
 		_buf[(i0 + j) % n] += v * exp(-t / length * 5.0) * vol
 
 
-func _render_race_music() -> AudioStreamWAV:
-	# 128 BPM, 4 bars: Am - F - C - G, driving bass, 16th-note arpeggio, drums.
-	var beat := 60.0 / 128.0
+## Race themes: tempo, 4-bar chord loop (MIDI notes), arpeggio pattern, bass
+## rhythm (8ths, or root-fifth bounce) and lead tone. Each track uses one of these.
+const RACE_THEMES := [
+	{"bpm": 128.0, "chords": [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]], # Am F C G
+		"arp": [0, 1, 2, 1], "bass": "eighths", "wave": 1, "lift": 12},
+	{"bpm": 140.0, "chords": [[48, 52, 55], [55, 59, 62], [57, 60, 64], [53, 57, 60]], # C G Am F
+		"arp": [0, 2, 1, 2], "bass": "bounce", "wave": 3, "lift": 12},
+	{"bpm": 120.0, "chords": [[50, 53, 57], [46, 50, 53], [43, 46, 50], [45, 49, 52]], # Dm Bb Gm A
+		"arp": [0, 1, 2, 0], "bass": "sixteenths", "wave": 2, "lift": 0},
+]
+
+
+func _render_race_music(theme: Dictionary) -> AudioStreamWAV:
+	var beat: float = 60.0 / float(theme.bpm)
 	_buf = PackedFloat32Array()
 	_buf.resize(int(beat * 16.0 * RATE))
-	var chords := [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]]
+	var arp: Array = theme.arp
 	for bar in 4:
-		var chord: Array = chords[bar]
+		var chord: Array = theme.chords[bar]
 		var t0 := bar * 4.0 * beat
-		for e in 8:
-			var root: int = chord[0] - 12
-			_note(t0 + e * beat * 0.5, beat * 0.42, _midi(root + (12 if e % 4 == 3 else 0)), 0.32, 2, 0.004, 0.03)
+		var root: int = chord[0] - 12
+		match theme.bass:
+			"bounce":
+				for e in 8:
+					var tone := root + (7 if e % 2 == 1 else 0)
+					_note(t0 + e * beat * 0.5, beat * 0.4, _midi(tone), 0.32, 2, 0.004, 0.03)
+			"sixteenths":
+				for e in 16:
+					_note(t0 + e * beat * 0.25, beat * 0.2, _midi(root - (12 if e % 8 == 0 else 0)), 0.26, 2, 0.003, 0.02)
+			_:
+				for e in 8:
+					_note(t0 + e * beat * 0.5, beat * 0.42, _midi(root + (12 if e % 4 == 3 else 0)), 0.32, 2, 0.004, 0.03)
 		for s16 in 16:
-			var tone: int = chord[[0, 1, 2, 1][s16 % 4]] + (12 if s16 >= 8 else 0) + 12
-			_note(t0 + s16 * beat * 0.25, beat * 0.2, _midi(tone), 0.11, 1, 0.003, 0.03)
+			var tone: int = chord[arp[s16 % 4]] + (12 if s16 >= 8 else 0) + int(theme.lift)
+			_note(t0 + s16 * beat * 0.25, beat * 0.2, _midi(tone), 0.11, int(theme.wave), 0.003, 0.03)
 		for b in 4:
 			_kick(t0 + b * beat, 0.75)
 			if b % 2 == 1:
 				_hit(t0 + b * beat, 0.16, 0.28, 0.45)
 			_hit(t0 + b * beat + beat * 0.5, 0.04, 0.12, 0.95)
+			if theme.bass == "bounce":
+				_hit(t0 + b * beat + beat * 0.25, 0.03, 0.06, 0.95)
+				_hit(t0 + b * beat + beat * 0.75, 0.03, 0.06, 0.95)
 	return _to_wav(_buf)
 
 

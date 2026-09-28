@@ -9,6 +9,9 @@ signal boost_started(car)
 signal nitro_ready(car)
 signal near_miss(car) # slid right to the edge of a crash and saved it
 signal shield_used(car) # the shield power-up just blocked a crash or a rocket
+signal jumped(car, big: bool) # left the ramp over the water (big = on nitro)
+signal landed(car)
+signal splashed(car) # too slow for the jump: fell in the water
 
 enum State { GRID, RACING, CRASHED, FINISHED }
 
@@ -34,6 +37,8 @@ const SLIP_RECOVER := 6.0 # how fast the car regains grip once back under it
 const SLIP_VISIBLE := 0.25 # below this the car looks perfectly planted
 const MAX_DRIFT := 10.0 # sideways slide (px) just before a crash
 const CRASH_TIME := 1.1
+const JUMP_MIN := 470.0 # speed needed at the ramp to clear the water
+const SPLASH_TIME := 1.1
 const CRUISE_SPEED := 220.0
 const LENGTH := 42.0
 const WIDTH := 24.0
@@ -57,7 +62,8 @@ var track
 var effects
 var engine: AudioStreamPlayer
 var body := "classic" # car style from the garage: classic, kart, f1, muscle
-var decal := "none" # none, stripes, number, checker, flames, bolt
+var decal := "none" # none, stripes, number, checker, flames, bolt, polka, stars, zigzag
+var trail_style := "color" # speed trail look from the garage
 var engine_gain := 0.0 # dB offset (CPU engines are quieter)
 var nitro_fill_mult := 1.0 # catch-up: cars further back fill nitro faster
 var lap_clean := true # no crash and no visible slide so far this lap (PERFECT LAP)
@@ -67,6 +73,12 @@ var shield := false: # power-up: blocks the next crash or rocket, for SHIELD_TIM
 		shield = v
 		shield_time = SHIELD_TIME if v else 0.0
 var shield_time := 0.0
+const ZAP_TIME := 2.0
+var zap_t := 0.0 # lightning: shrunk and slowed while > 0
+var airborne := false # flying over the water gap
+var air_h := 0.0 # 0..~1 height while airborne (for scale and shadow)
+var _sink := false # current "crash" is a splash into the water
+var _base_scale := Vector2.ZERO
 const SHIELD_TIME := 10.0
 var mega := false # power-up: the next nitro burst lasts longer
 var night := false # draw headlight beams
@@ -176,14 +188,29 @@ func tick(delta: float, held: bool) -> void:
 		shield_time -= delta
 		if shield_time <= 0.0:
 			shield = false
+	# Lightning shrink: pop small, then grow back over the last half second.
+	if _base_scale == Vector2.ZERO:
+		_base_scale = scale
+	var k := 1.0
+	if zap_t > 0.0:
+		zap_t = maxf(0.0, zap_t - delta)
+		k *= lerpf(0.65, 1.0, clampf((0.5 - zap_t) / 0.5, 0.0, 1.0)) if zap_t < 0.5 else 0.65
+	if airborne:
+		k *= 1.0 + 0.45 * air_h # closer to the camera while in the air
+	if _sink and state == State.CRASHED:
+		k *= lerpf(0.45, 1.0, clampf(_crash_timer / SPLASH_TIME, 0.0, 1.0)) # sinking
+	scale = _base_scale * k
 
 	if _invuln > 0.0:
 		_invuln -= delta
 		modulate.a = 0.35 if int(_invuln * 12.0) % 2 == 0 else 1.0
 	else:
 		modulate.a = 1.0
-	# On a figure-8, cars on the bridge are drawn above the bridge deck, others below it.
-	z_index = 2 if track.has_bridge() and track.on_bridge(progress) and state != State.CRASHED else 0
+	if _sink and state == State.CRASHED:
+		modulate.a = clampf(_crash_timer / SPLASH_TIME * 1.6, 0.0, 1.0)
+	# On a figure-8, cars on the bridge are drawn above the bridge deck, others below it;
+	# cars in the air fly over everything.
+	z_index = 2 if airborne or (track.has_bridge() and track.on_bridge(progress) and state != State.CRASHED) else 0
 	queue_redraw()
 	_glow.queue_redraw()
 	_flame.queue_redraw()
@@ -196,10 +223,14 @@ func _drive(delta: float, held: bool) -> void:
 
 	# Speed eases in and out instead of snapping: strong pull from low speed that
 	# tapers off near the top, and a brake that softens as the car slows down.
-	if state == State.FINISHED:
+	if airborne:
+		pass # no grip in the air: speed carries over the gap
+	elif state == State.FINISHED:
 		speed = move_toward(speed, CRUISE_SPEED, DRAG * delta)
 	elif held or boosting:
 		var target := BOOST_SPEED if boosting else TOP_SPEED
+		if zap_t > 0.0:
+			target = TOP_SPEED * 0.55
 		if speed < target:
 			var rate := BOOST_ACCEL if speed >= TOP_SPEED else ACCEL
 			var taper := 0.45 + 0.55 * (1.0 - speed / target)
@@ -211,7 +242,9 @@ func _drive(delta: float, held: bool) -> void:
 
 	var safe := sqrt(GRIP * grip_mult / maxf(absf(k), 0.00001))
 	var over := speed / safe - 1.0 - SLIP_TOLERANCE
-	if boosting or _grace > 0.0:
+	if airborne:
+		slip = 0.0
+	elif boosting or _grace > 0.0:
 		# Nitro: the car can't crash, it just drifts a little for style.
 		_grace = maxf(0.0, _grace - delta)
 		slip = clampf(over * 2.0, 0.0, 0.55) if boosting else maxf(0.0, slip - SLIP_RECOVER * delta)
@@ -226,6 +259,8 @@ func _drive(delta: float, held: bool) -> void:
 	var visible_slip := maxf(0.0, slip - SLIP_VISIBLE) / (1.0 - SLIP_VISIBLE)
 	_drift = lerpf(_drift, visible_slip * MAX_DRIFT * _slide_dir, minf(1.0, 12.0 * delta))
 	progress += speed * delta
+	if track.has_jump() and _check_jump():
+		return
 	position = track.point_at(progress, lane_offset + _drift)
 	var heading: float = track.tangent_at(progress).angle() - _slide_dir * visible_slip * 0.25
 	rotation = lerp_angle(rotation, heading, 1.0 - exp(-TURN_SMOOTHING * delta))
@@ -252,6 +287,21 @@ func _drive(delta: float, held: bool) -> void:
 			if _peak_slip > 0.65:
 				near_miss.emit(self)
 			_peak_slip = 0.0
+
+
+## Hit by lightning: shrunk and slowed for ZAP_TIME, unless a shield blocks it.
+## Returns true if the car was zapped.
+func zap() -> bool:
+	if state != State.RACING:
+		return false
+	if shield:
+		shield = false
+		shield_used.emit(self)
+		return false
+	zap_t = ZAP_TIME
+	speed = minf(speed, TOP_SPEED * 0.55)
+	boosting = false
+	return true
 
 
 ## Hit by a rocket: blown off the track (even mid-nitro), unless a shield blocks it.
@@ -327,6 +377,44 @@ func bot_wants_nitro() -> bool:
 	return true
 
 
+## Take-off, flight and landing over the water gap. Returns true if the car just
+## splashed (the rest of this frame's driving is skipped).
+func _check_jump() -> bool:
+	var f: float = track.jump_fraction(progress)
+	if airborne:
+		if f < 0.0:
+			airborne = false
+			air_h = 0.0
+			landed.emit(self)
+		else:
+			air_h = sin(PI * f) * clampf(speed / TOP_SPEED, 0.75, 1.25)
+	elif f >= 0.0 and f < 0.5:
+		if speed >= JUMP_MIN or state == State.FINISHED:
+			airborne = true
+			_drift = 0.0
+			jumped.emit(self, speed > TOP_SPEED * 1.05)
+		else:
+			_splash()
+			return true
+	return false
+
+
+func _splash() -> void:
+	state = State.CRASHED
+	crashes += 1
+	lap_clean = false
+	boosting = false
+	_sink = true
+	_crash_timer = SPLASH_TIME
+	_crash_vel = track.tangent_at(progress) * speed * 0.35
+	_spin = 0.0
+	speed = 0.0
+	slip = 0.0
+	_drift = 0.0
+	position = track.point_at(progress, lane_offset)
+	splashed.emit(self)
+
+
 func _rear_wheels() -> PackedVector2Array:
 	var fwd := Vector2.from_angle(rotation)
 	var side := fwd.orthogonal() * WIDTH * 0.5 * scale.x
@@ -344,6 +432,8 @@ func _leave_skids() -> void:
 
 func _crash(outward: float) -> void:
 	state = State.CRASHED
+	airborne = false
+	air_h = 0.0
 	crashes += 1
 	boosting = false
 	nitro = 0.0
@@ -371,8 +461,15 @@ func _crashed(delta: float) -> void:
 	_crash_vel = _crash_vel.move_toward(Vector2.ZERO, 650.0 * delta)
 	rotation += _spin * delta
 	_spin = move_toward(_spin, 0.0, 7.0 * delta)
-	_emit_smoke(delta, 0.06, Color(0.3, 0.3, 0.32, 0.5))
+	if _sink:
+		_crash_vel = _crash_vel.move_toward(Vector2.ZERO, 900.0 * delta)
+	else:
+		_emit_smoke(delta, 0.06, Color(0.3, 0.3, 0.32, 0.5))
 	if _crash_timer <= 0.0:
+		# Out of the water (or a crash that ended over it): back on the landing ramp.
+		if _sink or (track.has_jump() and track.jump_fraction(progress) >= 0.0):
+			progress = track.jump_lip() + track.JUMP_GAP + track.JUMP_RAMP * 0.6 + floorf((progress - track.jump_lip()) / track.length) * track.length
+		_sink = false
 		state = State.RACING
 		_invuln = 1.0
 		place()
@@ -408,6 +505,9 @@ func _update_engine() -> void:
 ## `skill` scales how close to each corner's limit it drives; a gentle per-car wobble
 ## keeps CPUs from driving identically.
 func bot_throttle(skill := 1.0, top_share := 1.0) -> bool:
+	# Approaching the jump: floor it, whatever the usual speed cap.
+	if track.has_jump() and track.dist_to_lip(progress) < 420.0 and speed < JUMP_MIN * 1.2:
+		return true
 	if not boosting and speed > TOP_SPEED * top_share:
 		return false
 	skill *= 1.0 + 0.03 * sin(progress / 280.0 + index * 1.7)
@@ -525,6 +625,8 @@ func _draw() -> void:
 		"f1": _draw_f1()
 		"kart": _draw_kart()
 		"muscle": _draw_muscle()
+		"buggy": _draw_buggy()
+		"hover": _draw_hover()
 		_: _draw_classic()
 
 
@@ -621,6 +723,48 @@ func _draw_muscle() -> void:
 	draw_rect(Rect2(hl - 3, hw - 8, 3, 5), Color(1, 1, 0.85))
 
 
+## Dune buggy: small tub, big knobbly rear tyres, a tubular roll cage.
+func _draw_buggy() -> void:
+	var hl := LENGTH * 0.5
+	var hw := WIDTH * 0.5 + 2.0
+	draw_colored_polygon(_rounded(Rect2(-hl + 3, -hw + 5, LENGTH, hw * 2.0), 6), Color(0, 0, 0, 0.35))
+	for wy in [-hw, hw]:
+		_wheel(Vector2(-hl * 0.55, wy), Vector2(15, 9))
+		_wheel(Vector2(hl * 0.6, wy * 0.9), Vector2(11, 7))
+		for k in 3:
+			draw_rect(Rect2(Vector2(-hl * 0.55 - 6 + k * 5, wy - 4.5), Vector2(2, 9)), Color(1, 1, 1, 0.12))
+	_shape(Rect2(-hl + 2, -hw + 5, LENGTH - 6, hw * 2.0 - 10), 5.0, color)
+	_draw_decal(Rect2(-hl + 5, -hw + 7, LENGTH - 12, hw * 2.0 - 14))
+	# Roll cage.
+	var cage := [Vector2(-9, -7), Vector2(7, -7), Vector2(7, 7), Vector2(-9, 7)]
+	for k in 4:
+		draw_line(cage[k], cage[(k + 1) % 4], OUTLINE, 4.0)
+		draw_line(cage[k], cage[(k + 1) % 4], Color(0.85, 0.85, 0.9), 2.0)
+	draw_line(cage[0], cage[2], Color(0.85, 0.85, 0.9), 1.5)
+	draw_circle(Vector2(-2, 0), 5.0, OUTLINE)
+	draw_circle(Vector2(-2, 0), 3.8, color.lightened(0.4))
+	draw_rect(Rect2(hl - 5, -4, 3, 8), Color(1, 1, 0.85))
+
+
+## Hovercraft: no wheels, a rounded hull on a glowing hover skirt with two fans.
+func _draw_hover() -> void:
+	var hl := LENGTH * 0.5
+	var hw := WIDTH * 0.5 + 1.0
+	draw_colored_polygon(_rounded(Rect2(-hl + 4, -hw + 7, LENGTH, hw * 2.0), 11), Color(0, 0, 0, 0.3))
+	var skirt := _rounded(Rect2(-hl - 1, -hw - 1, LENGTH + 2, hw * 2.0 + 2), 12)
+	draw_colored_polygon(skirt, Color(0.15, 0.16, 0.2))
+	var loop := skirt.duplicate()
+	loop.append(skirt[0])
+	draw_polyline(loop, Color(0.4, 0.85, 1.0), 2.5, true)
+	_shape(Rect2(-hl + 3, -hw + 3, LENGTH - 6, hw * 2.0 - 6), 9.0, color)
+	_draw_decal(Rect2(-hl + 6, -hw + 5, LENGTH - 14, hw * 2.0 - 10))
+	_shape(Rect2(-3, -hw + 7, 14, hw * 2.0 - 14), 5.0, Color(0.15, 0.2, 0.3))
+	for y in [-5.5, 5.5]:
+		draw_circle(Vector2(-hl + 5, y), 4.5, OUTLINE)
+		draw_circle(Vector2(-hl + 5, y), 3.2, Color(0.55, 0.58, 0.65))
+		draw_line(Vector2(-hl + 5, y - 3), Vector2(-hl + 5, y + 3), OUTLINE, 1.2)
+
+
 ## Decal painted on the body's top surface.
 func _draw_decal(deck: Rect2) -> void:
 	var cy := deck.get_center().y
@@ -663,6 +807,31 @@ func _draw_decal(deck: Rect2) -> void:
 				for p in pts:
 					inner.append(Vector2(p.x, lerpf(edge, p.y, 0.55)))
 				draw_colored_polygon(inner, Color(1.0, 0.85, 0.2, 0.95))
+		"polka":
+			var rr := maxf(1.6, deck.size.y * 0.13)
+			var x := deck.position.x + rr * 2.0
+			var k := 0
+			while x < deck.end.x - rr:
+				var yy := cy + (deck.size.y * 0.22 if k % 2 == 0 else -deck.size.y * 0.22)
+				draw_circle(Vector2(x, yy), rr, paint)
+				x += rr * 3.2
+				k += 1
+		"stars":
+			var n := 3
+			for k in n:
+				var c := Vector2(deck.position.x + deck.size.x * (k + 0.5) / n, cy)
+				var rr := minf(deck.size.y * 0.32, 5.0)
+				var star := PackedVector2Array()
+				for j in 10:
+					star.append(c + Vector2.from_angle(-PI * 0.5 + j * PI / 5.0) * (rr if j % 2 == 0 else rr * 0.45))
+				draw_colored_polygon(star, Color(1.0, 0.9, 0.3))
+		"zigzag":
+			var pts := PackedVector2Array()
+			var steps := 7
+			for k in steps + 1:
+				var x := deck.position.x + deck.size.x * k / steps
+				pts.append(Vector2(x, cy + (deck.size.y * 0.28 if k % 2 == 0 else -deck.size.y * 0.28)))
+			draw_polyline(pts, paint, 2.5, true)
 		"bolt":
 			var x0 := deck.position.x
 			var w := deck.size.x

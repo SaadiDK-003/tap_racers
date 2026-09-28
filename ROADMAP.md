@@ -26,6 +26,22 @@
 - [x] **Awards:** 16 achievements with coin rewards.
 - [x] **Builds:** Web, Windows, Linux and Android, plus an app icon.
 
+## Phase 6: Party, polish and progression (in progress)
+- [x] **Rematch:** a REMATCH button after a race (same track). The head-start handicap was dropped.
+- [x] **Track intro sweep:** a 2-second camera sweep over the track before the start lights.
+- [x] **Career mode:** 10 events against named CPU drivers, with 1–3 stars each (podium, win, goal), coins for new stars, and CAREER STAR / SUPERSTAR awards.
+- [x] **Win streak "king":** a crown on the pad of whoever won twice in a row, +15 coins per streak win, and +40 for beating them.
+- [ ] **Race replay:** a slow-motion replay of the best moment (photo finish, rocket hit, splash).
+- [x] **Haptics pass:** vibration for crashes, splashes, hits, landings, nitro and wins (humans only, rate-limited, with a setting). Also a performance pass: the pads' static parts are baked into one texture (draw calls down from ~150 to ~60 a frame), and fonts are pre-rasterized while the race loads.
+- [ ] **Per-body engine sounds:** kart buzz, muscle rumble, hover hum.
+- [ ] **Weather mid-race:** rain can start partway through a race.
+- [ ] **Shortcut track:** a risky, faster narrow path.
+- [ ] **Moving obstacles:** a train crossing or a rotating bridge on a new track.
+- [ ] **Second jump track:** a bigger jump with a hill.
+- [ ] **Tournament brackets:** up to 8 friends, heats and a final.
+- [ ] **Weekly challenge track** with a rule (no nitro, night only, ...).
+- [ ] **Shareable ghost codes:** race a friend's best lap.
+
 ## Ideas for later
 - Online high-score sharing, or ghost cars of your best lap
 - More tracks and scenery themes (volcano, space station, city at dusk)

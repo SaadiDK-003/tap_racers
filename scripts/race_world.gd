@@ -15,6 +15,11 @@ var powerups: Powerups # null when items are off
 var weather := "clear" # clear, rain or night
 var cars: Array = []
 var shake := 0.0 # seconds of screen shake left
+var hold_view := false # the race is moving the camera itself (intro sweep)
+var fit_scale := 1.0
+var _fit_center := Vector2.ZERO
+var _bake_area := Rect2()
+var _bake_k := 1.0
 var random_styles := false # menu demo: every car gets a random look
 
 var _base_pos := Vector2.ZERO
@@ -58,9 +63,11 @@ func build(map_def, num_cars: int) -> void:
 		if Game.is_cpu(i) or random_styles:
 			var bodies: Array = Profile.BODIES
 			var decals: Array = Profile.DECALS
-			look = [bodies[randi() % bodies.size()].id, decals[randi() % decals.size()].id]
+			var trails: Array = Profile.TRAILS
+			look = [bodies[randi() % bodies.size()].id, decals[randi() % decals.size()].id, trails[randi() % trails.size()].id]
 		car.body = look[0]
 		car.decal = look[1]
+		car.trail_style = look[2]
 		car_layer.add_child(car)
 		car.place()
 		cars.append(car)
@@ -134,6 +141,8 @@ func fit(area: Rect2, max_scale := 1.6, ui_keepouts: Array = []) -> void:
 	var s := minf(minf(area.size.x / size.x, area.size.y / size.y), max_scale)
 	rotation = -PI * 0.5 if turn else 0.0
 	scale = Vector2(s, s)
+	fit_scale = s
+	_fit_center = area.get_center()
 	_base_pos = area.get_center() - Transform2D(rotation, scale, 0.0, Vector2.ZERO) * b.get_center()
 	position = _base_pos
 	_update_scenery_view(ui_keepouts)
@@ -161,10 +170,38 @@ func _update_scenery_view(ui_keepouts: Array) -> void:
 	for v in visible:
 		area = area.expand(v)
 	var window_px := float(get_tree().root.size.x) / maxf(screen.x, 1.0)
-	track.bake(area.grow(40.0 / scale.x), clampf(scale.x * window_px, 0.4, 2.5))
+	_bake_area = area.grow(40.0 / scale.x)
+	_bake_k = clampf(scale.x * window_px, 0.4, 2.5)
+	track.bake(_bake_area, _bake_k)
+
+
+## Camera for the intro: centred on track point `p` at `zoom` x the fitted size,
+## blending (0..1) into the normal fitted view.
+func view_at(p: Vector2, zoom: float, blend: float) -> void:
+	var s := lerpf(fit_scale * zoom, fit_scale, blend)
+	var zoomed := _fit_center - Transform2D(rotation, Vector2(s, s), 0.0, Vector2.ZERO) * p
+	scale = Vector2(s, s)
+	var pos := zoomed.lerp(_base_pos, blend)
+	# The zoomed view is the fitted view scaled by z around some screen point A. With
+	# A on screen, it never shows ground outside the baked (fitted) area.
+	var z := s / fit_scale
+	if z > 1.001:
+		var a := (pos - _base_pos * z) / (1.0 - z)
+		var screen := get_viewport_rect().size
+		a = a.clamp(Vector2.ZERO, screen)
+		pos = a + (_base_pos - a) * z
+	position = pos
+
+
+func end_view() -> void:
+	hold_view = false
+	scale = Vector2(fit_scale, fit_scale)
+	position = _base_pos
 
 
 func _process(delta: float) -> void:
+	if hold_view:
+		return
 	if shake > 0.0:
 		shake = maxf(0.0, shake - delta)
 		var a := shake * 28.0

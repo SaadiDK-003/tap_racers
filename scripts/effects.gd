@@ -4,7 +4,10 @@ extends Node2D
 
 const DrawLayer = preload("res://scripts/draw_layer.gd")
 const Car = preload("res://scripts/car.gd")
-const MAX_SKID_POINTS := 1600
+const FontWarmer = preload("res://scripts/font_warmer.gd")
+const MAX_SKID_POINTS := 1200
+const MAX_PUFFS := 70 # smoke / spray on screen at once (each is a see-through circle)
+const MAX_SPARKS := 90
 
 var cars: Array = []
 var show_tags := true
@@ -14,21 +17,28 @@ var skid_layer: Node2D # set by the owner; placed between the track and the cars
 var _puffs: Array[Dictionary] = []
 var _sparks: Array[Dictionary] = []
 var _waves: Array[Dictionary] = []
+var _bolts: Array[Dictionary] = [] # lightning strikes {car, t, seed}
+var _bubbles: Array[Dictionary] = [] # CPU speech bubbles {car, text, t}
+const BUBBLE_TIME := 2.2
 var _skids := PackedVector2Array()
 var _glow_layer: Node2D
 var _font: FontVariation
+var _bubble_style: StyleBoxFlat
 var _time := 0.0
 const CROWN_TIME := 3.0 # seconds the crown shows after someone takes the lead
 const CROWN_AHEAD := 40.0 # drawn this far in front of the car, so the car stays visible
+static var _spot_tex: GradientTexture2D
+var _spot_car = null # winner in the spotlight
+var _spot_t := 0.0
+var _firework_t := 0.0
 var _crown_pop := 0.0 # bounces the crown when it appears
 var _crown_t := 0.0 # time left to show the crown
 var _last_leader = null
 
 
 func _ready() -> void:
-	_font = FontVariation.new()
-	_font.base_font = ThemeDB.fallback_font
-	_font.variation_embolden = 1.0
+	_font = Game.hud_font()
+	add_child(FontWarmer.new([[_font, 13, 0], [_font, 14, 0], [_font, 17, 0]]))
 	_glow_layer = DrawLayer.new()
 	_glow_layer.draw_fn = _draw_additive
 	_glow_layer.material = Car.additive()
@@ -38,6 +48,8 @@ func _ready() -> void:
 
 
 func puff(p: Vector2, col: Color, radius: float, vel := Vector2.ZERO, life := 0.7) -> void:
+	if _puffs.size() >= MAX_PUFFS:
+		return
 	_puffs.append({"p": p, "v": vel, "t": 0.0, "life": life, "r": radius, "c": col})
 
 
@@ -47,6 +59,65 @@ func burst(p: Vector2, car_color: Color) -> void:
 	for i in 22:
 		var c := Color(1.0, 0.75, 0.3) if i % 3 != 0 else car_color
 		_sparks.append({"p": p, "v": Vector2.from_angle(randf() * TAU) * randf_range(160, 420), "t": 0.0, "life": randf_range(0.3, 0.6), "c": c})
+
+
+## Speech bubble above a car (CPU driver chatter).
+func say(car, text: String) -> void:
+	_bubbles = _bubbles.filter(func(b): return b.car != car)
+	_bubbles.append({"car": car, "text": text, "t": 0.0})
+
+
+## A car falling into the water.
+func splash(p: Vector2) -> void:
+	_waves.append({"p": p, "t": 0.0, "c": Color(0.55, 0.85, 1.0)})
+	for i in 22:
+		var c := Color(0.75, 0.92, 1.0, 0.9) if i % 2 == 0 else Color(1, 1, 1, 0.9)
+		puff(p, c, randf_range(3.0, 7.0), Vector2.from_angle(randf() * TAU) * randf_range(60, 220), randf_range(0.4, 0.7))
+
+
+## Dust kicked up by a landing.
+func land_dust(p: Vector2) -> void:
+	for i in 10:
+		puff(p, Color(0.8, 0.72, 0.6, 0.5), randf_range(5.0, 9.0), Vector2.from_angle(randf() * TAU) * randf_range(30, 90), 0.5)
+
+
+## A lightning bolt striking down onto a car.
+func bolt(car) -> void:
+	_bolts.append({"car": car, "t": 0.0, "seed": randi()})
+	for i in 10:
+		_sparks.append({"p": car.position, "v": Vector2.from_angle(randf() * TAU) * randf_range(120, 260), "t": 0.0, "life": randf_range(0.2, 0.4), "c": Color(1.0, 0.95, 0.5)})
+
+
+## Winner moment: a spotlight follows the car and fireworks burst around it.
+func celebrate(car) -> void:
+	_spot_car = car
+	_spot_t = 3.2
+	_firework_t = 0.0
+
+
+func firework(p: Vector2, col: Color) -> void:
+	_waves.append({"p": p, "t": 0.0, "c": col})
+	for i in 26:
+		var a := i * TAU / 26.0 + randf() * 0.1
+		var c := col if i % 3 != 0 else Color(1.0, 0.95, 0.7)
+		_sparks.append({"p": p, "v": Vector2.from_angle(a) * randf_range(230, 330), "t": 0.0, "life": randf_range(0.55, 0.85), "c": c})
+
+
+static func _spotlight_texture() -> GradientTexture2D:
+	if _spot_tex == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(0, 0, 0, 0))
+		g.set_color(1, Color(0, 0, 0, 0.6))
+		g.add_point(0.05, Color(0, 0, 0, 0))
+		g.add_point(0.12, Color(0, 0, 0, 0.55))
+		_spot_tex = GradientTexture2D.new()
+		_spot_tex.gradient = g
+		_spot_tex.fill = GradientTexture2D.FILL_RADIAL
+		_spot_tex.fill_from = Vector2(0.5, 0.5)
+		_spot_tex.fill_to = Vector2(1.0, 0.5)
+		_spot_tex.width = 256
+		_spot_tex.height = 256
+	return _spot_tex
 
 
 ## Expanding ring when a car fires its nitro.
@@ -59,8 +130,8 @@ func shockwave(p: Vector2, col: Color) -> void:
 func skid(a: Vector2, b: Vector2) -> void:
 	_skids.append(a)
 	_skids.append(b)
-	if _skids.size() > MAX_SKID_POINTS:
-		_skids = _skids.slice(_skids.size() - MAX_SKID_POINTS)
+	if _skids.size() > MAX_SKID_POINTS + 200:
+		_skids = _skids.slice(_skids.size() - MAX_SKID_POINTS) # trim in chunks, not every mark
 	if skid_layer:
 		skid_layer.queue_redraw()
 
@@ -77,6 +148,14 @@ func _process(delta: float) -> void:
 		s.p += s.v * delta
 		s.v *= 0.9
 	_sparks = _sparks.filter(func(s): return s.t < s.life)
+	if _sparks.size() > MAX_SPARKS:
+		_sparks = _sparks.slice(_sparks.size() - MAX_SPARKS)
+	for b in _bolts:
+		b.t += delta
+	_bolts = _bolts.filter(func(b): return b.t < 0.4)
+	for b in _bubbles:
+		b.t += delta
+	_bubbles = _bubbles.filter(func(b): return b.t < BUBBLE_TIME)
 	for w in _waves:
 		w.t += delta
 	_waves = _waves.filter(func(w): return w.t < 0.45)
@@ -86,11 +165,29 @@ func _process(delta: float) -> void:
 		_crown_t = CROWN_TIME if leader != null else 0.0
 	_crown_pop = maxf(0.0, _crown_pop - delta * 3.0)
 	_crown_t = maxf(0.0, _crown_t - delta)
+	if skid_layer:
+		for car in cars:
+			if car.airborne:
+				skid_layer.queue_redraw()
+				break
+	if _spot_t > 0.0:
+		_spot_t -= delta
+		_firework_t -= delta
+		if _firework_t <= 0.0 and _spot_t > 0.6:
+			_firework_t = 0.35
+			var p: Vector2 = _spot_car.position + Vector2.from_angle(randf() * TAU) * randf_range(60.0, 130.0)
+			firework(p, _spot_car.color.lightened(randf_range(0.0, 0.3)))
+			Sfx.play(Sfx.crash, -18.0, randf_range(1.8, 2.3))
 	queue_redraw()
 	_glow_layer.queue_redraw()
 
 
 func _draw() -> void:
+	if _spot_t > 0.0 and _spot_car != null:
+		# Darken everything except a circle around the winner (fades in and out).
+		var a := clampf(minf(3.2 - _spot_t, _spot_t) / 0.4, 0.0, 1.0)
+		var r := 1500.0
+		draw_texture_rect(_spotlight_texture(), Rect2(_spot_car.position - Vector2(r, r), Vector2(r, r) * 2.0), false, Color(1, 1, 1, a))
 	for q in _puffs:
 		var k: float = q.t / q.life
 		var c: Color = q.c
@@ -110,12 +207,37 @@ func _draw() -> void:
 		var pop := 1.0 + 0.6 * _crown_pop
 		draw_set_transform(_crown_pos() + Vector2(0, bob).rotated(up), up + sin(_time * 3.0) * 0.08, Vector2(pop, pop))
 		_draw_crown(_crown_alpha())
+	for b in _bubbles:
+		_draw_bubble(b, up)
+	draw_set_transform(Vector2.ZERO)
 	if show_tags:
 		for car in cars:
 			draw_set_transform(car.position + Vector2(0, -35).rotated(up), up)
 			draw_rect(Rect2(-16, -9, 32, 18), Color(car.color, 0.95))
 			draw_string(_font, Vector2(-16, 5), "P%d" % (car.index + 1), HORIZONTAL_ALIGNMENT_CENTER, 32, 14, Color(0.05, 0.05, 0.08))
 	draw_set_transform(Vector2.ZERO)
+
+
+func _draw_bubble(b: Dictionary, up: float) -> void:
+	var car = b.car
+	var t: float = b.t
+	var a := clampf(minf(t / 0.12, (BUBBLE_TIME - t) / 0.3), 0.0, 1.0)
+	var pop := 0.8 + 0.2 * minf(1.0, t / 0.12)
+	var text: String = b.text
+	var fs := 13
+	var w := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 16.0
+	var h := 22.0
+	draw_set_transform(car.position + Vector2(0, -44).rotated(up), up, Vector2(pop, pop))
+	var box := Rect2(-w * 0.5, -h, w, h)
+	if _bubble_style == null:
+		_bubble_style = StyleBoxFlat.new()
+		_bubble_style.set_corner_radius_all(10)
+		_bubble_style.set_border_width_all(2)
+	_bubble_style.bg_color = Color(1, 1, 1, 0.95 * a)
+	_bubble_style.border_color = Color(car.color.darkened(0.2), a)
+	draw_style_box(_bubble_style, box)
+	draw_colored_polygon(PackedVector2Array([Vector2(-5, -1), Vector2(5, -1), Vector2(0, 7)]), Color(1, 1, 1, 0.95 * a))
+	draw_string(_font, Vector2(-w * 0.5, -6), text, HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(0.08, 0.08, 0.12, a))
 
 
 func _crown_visible() -> bool:
@@ -151,19 +273,50 @@ func _draw_crown(alpha := 1.0) -> void:
 	draw_line(Vector2(-9, -1), Vector2(-11, 5), Color(1, 1, 1, 0.6 * alpha), 2.0)
 
 
+## Colours along a speed trail (index 0 = oldest/tail, fading out) for a garage style.
+static func trail_colors(style: String, base: Color, n: int, t: float, boosting := false) -> PackedColorArray:
+	var out := PackedColorArray()
+	for i in n:
+		var f := float(i) / maxf(n - 1, 1) # 0 at the tail, 1 at the car
+		var a := 0.6 * f
+		var c: Color
+		match style:
+			"fire": c = Color(1.0, 0.15, 0.05).lerp(Color(1.0, 0.9, 0.3), f)
+			"ice": c = Color(0.35, 0.65, 1.0).lerp(Color(0.9, 1.0, 1.0), f)
+			"gold": c = Color(1.0, 0.7, 0.1).lerp(Color(1.0, 0.95, 0.6), 0.5 + 0.5 * sin(f * 9.0 - t * 8.0))
+			"neon": c = Color(1.0, 0.2, 0.75) if int(f * 6.0 + t * 4.0) % 2 == 0 else Color(0.2, 0.95, 1.0)
+			"rainbow": c = Color.from_hsv(fposmod(f * 0.8 - t * 0.6, 1.0), 0.8, 1.0)
+			_: c = Car.NITRO_COLOR if boosting else base
+		out.append(Color(c, a))
+	return out
+
+
 func _draw_additive(ci: CanvasItem) -> void:
 	for car in cars:
 		var pts: PackedVector2Array = car.trail
 		if pts.size() < 2:
 			continue
-		var c: Color = Car.NITRO_COLOR if car.boosting else car.color
-		var colors := PackedColorArray()
-		for i in pts.size():
-			colors.append(Color(c, 0.55 * float(i) / pts.size()))
+		var colors := trail_colors(car.trail_style, car.color, pts.size(), _time, car.boosting)
 		ci.draw_polyline_colors(pts, colors, 7.0 if car.boosting else 5.0, true)
 	if _crown_visible():
 		var p := _crown_pos()
 		ci.draw_texture_rect(Car.glow_texture(), Rect2(p - Vector2(30, 30), Vector2(60, 60)), false, Color(1.0, 0.75, 0.2, 0.4 * _crown_alpha()))
+	var sky: float = -(get_parent() as Node2D).rotation
+	for b in _bolts:
+		# Jagged bolt from off-screen "above" down to the car, flickering.
+		var target: Vector2 = b.car.position
+		var start: Vector2 = target + Vector2(0, -260).rotated(sky)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = b.seed + int(b.t * 30.0)
+		var pts := PackedVector2Array([start])
+		for k in range(1, 7):
+			var f := k / 7.0
+			pts.append(start.lerp(target, f) + Vector2(rng.randf_range(-18, 18), 0).rotated(sky))
+		pts.append(target)
+		var a: float = 1.0 - b.t / 0.4
+		ci.draw_polyline(pts, Color(1.0, 0.9, 0.3, 0.5 * a), 12.0, true)
+		ci.draw_polyline(pts, Color(1.0, 1.0, 0.85, a), 4.0, true)
+		ci.draw_texture_rect(Car.glow_texture(), Rect2(target - Vector2(40, 40), Vector2(80, 80)), false, Color(1.0, 0.9, 0.4, 0.6 * a))
 	for w in _waves:
 		var k: float = w.t / 0.45
 		ci.draw_arc(w.p, 20.0 + 110.0 * k, 0.0, TAU, 48, Color(w.c, 0.9 * (1.0 - k)), 8.0 * (1.0 - k) + 2.0, true)
@@ -175,5 +328,15 @@ func _draw_additive(ci: CanvasItem) -> void:
 
 
 func _draw_skids(ci: CanvasItem) -> void:
+	# Ground shadows of cars in the air: they stay on the ground and drift away from
+	# the car the higher it flies.
+	var up: float = -(get_parent() as Node2D).rotation
+	for car in cars:
+		if car.airborne:
+			var h: float = car.air_h
+			var p: Vector2 = car.position + Vector2(14, 20).rotated(up) * h
+			ci.draw_set_transform(p, car.rotation, Vector2(1.0, 0.55))
+			ci.draw_circle(Vector2.ZERO, 24.0, Color(0, 0, 0, 0.32 * (1.0 - 0.35 * h)))
+			ci.draw_set_transform(Vector2.ZERO)
 	if _skids.size() >= 2:
 		ci.draw_multiline(_skids, Color(0.02, 0.02, 0.03, 0.35), 4.0)

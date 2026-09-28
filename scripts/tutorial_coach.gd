@@ -73,7 +73,7 @@ func _go(step: Step) -> void:
 		Step.FIRE_NITRO:
 			_show("4. BOOST!", "NITRO is ready - DOUBLE-TAP %s!\nYou can't crash while it burns." % _hold_hint())
 		Step.BOXES:
-			_show("5. POWER-UPS", "Drive through the ? boxes for\nSHIELDS, ROCKETS and MEGA NITRO.")
+			_show("5. POWER-UPS", "Drive through the ? boxes for\nSHIELDS, ROCKETS, MINES and more!")
 		Step.FINISH:
 			_show("YOU'VE GOT IT!", "Finish the race to complete the tutorial.")
 

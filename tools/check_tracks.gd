@@ -8,7 +8,8 @@ extends SceneTree
 const MAPS := [
 	"res://maps/sunset_speedway.gd", "res://maps/canyon_hairpins.gd", "res://maps/forest_ring.gd",
 	"res://maps/frosty_peaks.gd", "res://maps/palm_beach.gd", "res://maps/crossover.gd",
-	"res://maps/volcano_rush.gd", "res://maps/neon_nights.gd", "res://maps/autumn_valley.gd",
+	"res://maps/volcano_rush.gd", "res://maps/neon_nights.gd", "res://maps/autumn_valley.gd", "res://maps/orbit_station.gd",
+	"res://maps/farmland_twist.gd", "res://maps/harbor_docks.gd", "res://maps/splash_canyon.gd",
 ]
 
 

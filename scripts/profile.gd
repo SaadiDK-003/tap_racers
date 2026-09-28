@@ -10,6 +10,8 @@ const BODIES := [
 	{"id": "kart", "name": "KART", "price": 150},
 	{"id": "f1", "name": "FORMULA", "price": 250},
 	{"id": "muscle", "name": "MUSCLE", "price": 350},
+	{"id": "buggy", "name": "BUGGY", "price": 300},
+	{"id": "hover", "name": "HOVER", "price": 450},
 ]
 const DECALS := [
 	{"id": "none", "name": "PLAIN", "price": 0},
@@ -18,6 +20,17 @@ const DECALS := [
 	{"id": "checker", "name": "CHECKER", "price": 100},
 	{"id": "flames", "name": "FLAMES", "price": 150},
 	{"id": "bolt", "name": "LIGHTNING", "price": 200},
+	{"id": "polka", "name": "POLKA", "price": 90},
+	{"id": "stars", "name": "STARS", "price": 120},
+	{"id": "zigzag", "name": "ZIGZAG", "price": 130},
+]
+const TRAILS := [
+	{"id": "color", "name": "CLASSIC", "price": 0},
+	{"id": "fire", "name": "FIRE", "price": 120},
+	{"id": "ice", "name": "ICE", "price": 120},
+	{"id": "neon", "name": "NEON", "price": 160},
+	{"id": "gold", "name": "GOLD", "price": 200},
+	{"id": "rainbow", "name": "RAINBOW", "price": 300},
 ]
 
 const PLACE_COINS := [30, 20, 12, 6]
@@ -36,8 +49,8 @@ const ACHIEVEMENTS := [
 	["flawless", "FLAWLESS", "Drive every lap of a race as a PERFECT LAP", 100],
 	["perfect10", "PERFECTIONIST", "Drive 10 PERFECT LAPS in total", 60],
 	["nitro5", "NITRO JUNKIE", "Fire nitro 5 times in one race", 50],
-	["rocket3", "ROCKETEER", "Hit 3 cars with rockets in one race", 60],
-	["shielded", "SAVED BY THE BUBBLE", "Let a shield block a crash or a rocket", 30],
+	["rocket3", "ROCKETEER", "Knock out 3 cars with rockets or mines in one race", 60],
+	["shielded", "SAVED BY THE BUBBLE", "Let a shield block a crash, rocket, mine or lightning", 30],
 	["photo_win", "BY A NOSE", "Win a photo finish", 60],
 	["comeback", "COMEBACK KID", "Win after being last on a later lap", 80],
 	["hard_win", "PRO RACER", "Win against HARD CPUs", 80],
@@ -47,6 +60,8 @@ const ACHIEVEMENTS := [
 	["world_tour", "WORLD TOUR", "Win on every track", 150],
 	["record", "RECORD BREAKER", "Set a new time-trial best lap", 40],
 	["stylish", "STYLE ICON", "Unlock 3 garage items", 30],
+	["career", "CAREER STAR", "Win Blaze's Final in career mode", 150],
+	["superstar", "SUPERSTAR", "Earn every star in career mode", 200],
 ]
 
 var data := {}
@@ -74,6 +89,7 @@ func _defaults() -> Dictionary:
 		"achievements": [],
 		"map_wins": {}, # map title -> human wins there
 		"settings": {},
+		"career": [], # stars bitmask per career event
 	}
 
 
@@ -108,7 +124,7 @@ func add_coins(amount: int) -> void:
 
 
 func is_unlocked(id: String) -> bool:
-	return data.unlocked.has(id)
+	return data.unlocked.has(id) or id in ["classic", "none", "color"] # free defaults
 
 
 func buy(id: String, price: int) -> bool:
@@ -122,18 +138,22 @@ func buy(id: String, price: int) -> bool:
 	return true
 
 
-## Equipped style for a player slot: [body id, decal id].
+## Equipped style for a player slot: [body id, decal id, trail id].
 func style(slot: int) -> Array:
 	var e: Array = data.equipped
-	return e[slot] if slot < e.size() else ["classic", "none"]
+	var s: Array = (e[slot] as Array).duplicate() if slot < e.size() else []
+	var defaults := ["classic", "none", "color"]
+	while s.size() < defaults.size(): # older saves had no trail
+		s.append(defaults[s.size()])
+	return s
 
 
-func equip(slot: int, body := "", decal := "") -> void:
-	var s: Array = style(slot).duplicate()
-	if body != "":
-		s[0] = body
-	if decal != "":
-		s[1] = decal
+## kind: 0 body, 1 decal, 2 trail.
+func equip(slot: int, kind: int, id: String) -> void:
+	var s: Array = style(slot)
+	s[kind] = id
+	while data.equipped.size() <= slot:
+		data.equipped.append(["classic", "none", "color"])
 	data.equipped[slot] = s
 	save()
 
@@ -304,6 +324,42 @@ func _check_achievements(race: Dictionary, car: Dictionary) -> void:
 		unlock("nitro5")
 	if car.get("rocket_hits", 0) >= 3:
 		unlock("rocket3")
+
+
+# --- Career ------------------------------------------------------------------------
+
+## Stars bitmask earned so far on career event `i`.
+func career_stars(i: int) -> int:
+	var c: Array = data.career
+	return int(c[i]) if i < c.size() else 0
+
+
+func career_unlocked(i: int) -> bool:
+	return i == 0 or career_stars(i - 1) & Game.CareerEvents.PODIUM != 0
+
+
+func career_total() -> int:
+	var total := 0
+	for i in Game.CareerEvents.count():
+		total += Game.CareerEvents.star_count(career_stars(i))
+	return total
+
+
+## Saves a career result; returns {new: bitmask of stars earned for the first time, coins}.
+func record_career(i: int, bits: int) -> Dictionary:
+	var before := career_stars(i)
+	var fresh := bits & ~before
+	while data.career.size() <= i:
+		data.career.append(0)
+	data.career[i] = before | bits
+	var coins := Game.CareerEvents.star_count(fresh) * Game.CareerEvents.STAR_COINS
+	add_coins(coins)
+	if i == Game.CareerEvents.count() - 1 and bits & Game.CareerEvents.WIN:
+		unlock("career")
+	if career_total() == Game.CareerEvents.count() * 3:
+		unlock("superstar")
+	save()
+	return {"new": fresh, "coins": coins}
 
 
 # --- Tutorial and time trial -------------------------------------------------------

@@ -7,9 +7,7 @@ var _font: FontVariation
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(170, 52)
-	_font = FontVariation.new()
-	_font.base_font = ThemeDB.fallback_font
-	_font.variation_embolden = 1.0
+	_font = Game.hud_font()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 

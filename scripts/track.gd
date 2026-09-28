@@ -29,6 +29,7 @@ func setup(map_def, offsets: Array[float]) -> void:
 	_build_curve()
 	_runs = _find_corner_runs()
 	_find_bridge()
+	_find_jump()
 	# Scenery is placed when the track is fitted to the screen (see rebuild_scenery),
 	# since parking lots depend on what's visible. Building it here too was wasted work.
 	_build_visuals()
@@ -89,6 +90,8 @@ func glow_points() -> Array:
 			"lava": out.append([prop.p, prop.r * 2.2, Color(1.0, 0.45, 0.1, 0.55)])
 			"vent": out.append([prop.p, prop.r * 2.5, Color(1.0, 0.4, 0.1, 0.45)])
 			"crack": out.append([prop.p, prop.r * 1.4, Color(1.0, 0.4, 0.1, 0.3)])
+			"module": out.append([prop.p, prop.r * 1.8, Color(0.5, 0.8, 1.0, 0.35)])
+			"crane": out.append([prop.p, 40.0, Color(1.0, 0.85, 0.5, 0.35)])
 			"neon_sign": out.append([prop.p, prop.r * 2.4, Color(Scenery.NEON_COLORS[absi(int(prop.seed)) % Scenery.NEON_COLORS.size()], 0.5)])
 	return out
 
@@ -102,6 +105,149 @@ func lamp_points() -> PackedVector2Array:
 		elif prop.k == "grandstand":
 			out.append(prop.p)
 	return out
+
+
+# --- Jump over water ------------------------------------------------------------
+
+const JUMP_RAMP := 40.0 # length of the take-off and landing ramps
+const JUMP_GAP := 120.0 # length of open water between the ramps
+var _jump_s := -1.0 # distance along the loop of the middle of the gap (-1 = none)
+var _river_from := 0.0 # river extent across the road (negative side .. positive side)
+var _river_to := 0.0
+
+
+func has_jump() -> bool:
+	return _jump_s >= 0.0
+
+
+## Distance along the loop where cars leave the ground (end of the take-off ramp).
+func jump_lip() -> float:
+	return fposmod(_jump_s - JUMP_GAP * 0.5, length)
+
+
+## 0..1 across the water gap, or -1 when `s` isn't over the gap.
+func jump_fraction(s: float) -> float:
+	if _jump_s < 0.0:
+		return -1.0
+	var d := fposmod(s - jump_lip(), length)
+	return d / JUMP_GAP if d <= JUMP_GAP else -1.0
+
+
+## Distance from `s` ahead to the take-off lip (0..length).
+func dist_to_lip(s: float) -> float:
+	return fposmod(jump_lip() - s, length)
+
+
+## True anywhere on the ramps or the gap (keep items and mines away from here).
+func in_jump_zone(s: float) -> bool:
+	if _jump_s < 0.0:
+		return false
+	var d := fposmod(s - jump_lip() + JUMP_RAMP + 30.0, length)
+	return d <= JUMP_GAP + (JUMP_RAMP + 30.0) * 2.0
+
+
+const JUMP_RIVER := 900.0 # how far the river runs either side of the road
+
+
+## Sideways wiggle of the river along its length (0 at the road, so the gap stays put).
+func _river_bend(t: float) -> float:
+	return sin(t * 0.006) * 70.0 * clampf(absf(t) / 200.0, 0.0, 1.0)
+
+
+## Points along the river's centre line (for keeping scenery out of the water).
+func river_points() -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if _jump_s < 0.0:
+		return out
+	var cj: Vector2 = point_at(_jump_s, 0.0)
+	var along: Vector2 = tangent_at(_jump_s)
+	var across := Vector2(-along.y, along.x)
+	var t := _river_from
+	while t <= _river_to:
+		out.append(cj + across * t + along * _river_bend(t))
+		t += 45.0
+	return out
+
+
+func _find_jump() -> void:
+	var jp: Vector2 = map.jump_point
+	if not jp.is_finite():
+		return
+	var best := 0
+	for i in _n:
+		if _pos[i].distance_to(jp) < _pos[best].distance_to(jp):
+			best = i
+	_jump_s = best * _step
+	# Work out how far the river can run on each side before it would touch another
+	# part of the road: the outer side runs off into the canyon, the infield side stops.
+	var cj: Vector2 = point_at(_jump_s, 0.0)
+	var along: Vector2 = tangent_at(_jump_s)
+	var across := Vector2(-along.y, along.x)
+	var limits: Array[float] = []
+	for side in [-1.0, 1.0]:
+		var t := 0.0
+		var reach := JUMP_RIVER
+		while t < JUMP_RIVER:
+			t += 20.0
+			var q: Vector2 = cj + across * side * t + along * _river_bend(side * t)
+			var clear := true
+			for i in range(0, _n, 2):
+				var ds := absf(fposmod(i * _step - _jump_s + length * 0.5, length) - length * 0.5)
+				if ds > JUMP_GAP + 200.0 and _pos[i].distance_to(q) < map.road_width * 0.5 + JUMP_GAP * 0.5 + 60.0:
+					clear = false
+					break
+			if not clear:
+				reach = maxf(map.road_width * 0.5 + 40.0, t - 40.0)
+				break
+		limits.append(reach)
+	_river_from = -limits[0]
+	_river_to = limits[1]
+
+
+## River under the gap and striped ramps on either side, painted over the road.
+func _draw_jump(ci: CanvasItem) -> void:
+	if _jump_s < 0.0:
+		return
+	var w: float = map.road_width
+	var lip := jump_lip()
+	var land := lip + JUMP_GAP
+	# A winding river crosses the whole canyon under the gap: sandy banks, water, ripples.
+	var cj: Vector2 = point_at(_jump_s, 0.0)
+	var along: Vector2 = tangent_at(_jump_s)
+	var across := Vector2(-along.y, along.x)
+	# The infield end is a round pond (a river can't cross the track a second time).
+	var pond_t := _river_from if absf(_river_from) < absf(_river_to) else _river_to
+	for layer in 2:
+		var half := JUMP_GAP * 0.5 + (10.0 if layer == 0 else 0.0)
+		var col := Color(0.72, 0.6, 0.42) if layer == 0 else Color(0.14, 0.42, 0.62)
+		var poly := PackedVector2Array()
+		var steps := 40
+		for k in steps + 1:
+			var t := lerpf(_river_from, _river_to, float(k) / steps)
+			poly.append(cj + across * t + along * (_river_bend(t) - half))
+		for k in steps + 1:
+			var t := lerpf(_river_to, _river_from, float(k) / steps)
+			poly.append(cj + across * t + along * (_river_bend(t) + half))
+		ci.draw_colored_polygon(poly, col)
+		ci.draw_circle(cj + across * pond_t + along * _river_bend(pond_t), half * 1.25, col)
+	for k in 12:
+		var t := lerpf(_river_from, _river_to, (k + 0.5) / 12.0)
+		var q: Vector2 = cj + across * t + along * (_river_bend(t) + (k % 3 - 1) * JUMP_GAP * 0.25)
+		ci.draw_line(q - across * 16.0, q + across * 16.0, Color(0.55, 0.8, 0.95, 0.6), 3.0, true)
+	# Ramps: yellow/black warning stripes, brighter towards the edge of the gap.
+	for r in [[lip - JUMP_RAMP, lip], [land, land + JUMP_RAMP]]:
+		var s0: float = r[0]
+		var s1: float = r[1]
+		var quad := PackedVector2Array([point_at(s0, -w * 0.5), point_at(s1, -w * 0.5), point_at(s1, w * 0.5), point_at(s0, w * 0.5)])
+		ci.draw_colored_polygon(quad, Color(0.35, 0.35, 0.38))
+		var n := 7
+		for k in n:
+			var a0 := -w * 0.5 + w * k / n
+			var a1 := a0 + w / n
+			var stripe := PackedVector2Array([point_at(s0, a0), point_at(s0, a1), point_at(s1, a1 - w / n * 0.6), point_at(s1, a0 - w / n * 0.6)])
+			ci.draw_colored_polygon(stripe, Color(1.0, 0.8, 0.1) if k % 2 == 0 else Color(0.08, 0.08, 0.1))
+		var edge := s1 if s0 < lip else s0
+		ci.draw_line(point_at(edge, -w * 0.5), point_at(edge, w * 0.5), Color(0.95, 0.95, 0.95), 4.0)
 
 
 func has_bridge() -> bool:
@@ -239,6 +385,7 @@ func _build_visuals() -> void:
 	_add_layer(_draw_curbs, _bake_root)
 	_add_layer(func(ci): _draw_band(ci, map.road_width, map.road), _bake_root)
 	_add_layer(_draw_details, _bake_root)
+	_add_layer(_draw_jump, _bake_root)
 	_scenery_layer = _add_layer(func(ci): Scenery.draw_all(ci, _props), _bake_root)
 	_baked = Sprite2D.new()
 	_baked.centered = false
