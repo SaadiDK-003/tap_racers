@@ -1,0 +1,32 @@
+# Godot 4 editor/import cache (regenerated automatically)
+.godot/
+/android/
+
+# Built games (Web / Windows / Linux / Android) - rebuild from export_presets.cfg
+export/
+*.apk
+*.aab
+*.idsig
+*.exe
+*.x86_64
+*.pck
+*.zip
+
+# Signing keys and export secrets - never commit these
+*.keystore
+*.jks
+export_credentials.cfg
+
+# Mono/C# (not used, but harmless)
+.mono/
+data_*/
+mono_crash.*.json
+
+# OS / editor clutter
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+*~
+.vscode/
+.idea/
