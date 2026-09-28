@@ -132,6 +132,7 @@ godot --headless --path . --export-release "Linux"
 GODOT_ANDROID_KEYSTORE_RELEASE_PATH=~/.android/debug.keystore GODOT_ANDROID_KEYSTORE_RELEASE_USER=androiddebugkey \
   GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=android godot --headless --path . --export-release "Android" export/android/TapRacers.apk
 ```
+- **Windows:** the `.exe` gets the logo icon (`assets/icon.ico`) and "Tap Racers" version info through [rcedit](https://github.com/electron/rcedit), run with Wine on Linux. Point Godot at both in the editor settings: `export/windows/rcedit` and `export/windows/wine`. Without them the build still works, but shows Godot's default icon.
 - **Web:** serve `export/web/` with any static server, for example `python3 -m http.server`, then open `index.html`. It's built without threads, so no special server headers are needed.
 - **Android:** use the **release** export for testing on phones, because debug builds run much slower. It's signed with the local debug key, which is fine for installing on your own phones. The Play Store needs your own release keystore instead. Install with `adb install -r export/android/TapRacers.apk`, or copy the file to the phone.
 # tap_racers
