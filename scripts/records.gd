@@ -13,13 +13,16 @@ func _ready() -> void:
 	add_child(bg)
 	var landscape := Game.is_landscape_layout()
 
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	Game.fit_to_safe(center)
-	add_child(center)
+	# Header pinned at the top, BACK pinned at the bottom, lists scroll in between,
+	# so the page fits any window however many tracks there are.
+	var margin := MarginContainer.new()
+	add_child(margin)
+	Game.fit_to_safe(margin)
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 16)
 	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 14)
-	center.add_child(outer)
+	outer.add_theme_constant_override("separation", 10)
+	margin.add_child(outer)
 	var header := HBoxContainer.new()
 	header.alignment = BoxContainer.ALIGNMENT_CENTER
 	header.add_theme_constant_override("separation", 16)
@@ -27,9 +30,16 @@ func _ready() -> void:
 	header.add_child(CoinBadge.new())
 	outer.add_child(header)
 
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	outer.add_child(scroll)
+	var center := CenterContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(center)
 	var main: BoxContainer = HBoxContainer.new() if landscape else VBoxContainer.new()
 	main.add_theme_constant_override("separation", 40 if landscape else 16)
-	outer.add_child(main)
+	center.add_child(main)
 
 	# Track records.
 	var tracks := _panel(main)
@@ -39,12 +49,12 @@ func _ready() -> void:
 		var title: String = m.build().title
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 14)
-		var name_l := _label(title.to_upper(), 20, 4)
+		var name_l := _label(title.to_upper(), 18, 4)
 		name_l.custom_minimum_size = Vector2(200, 0)
 		name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		row.add_child(name_l)
 		var rec: Dictionary = best.get(title, {})
-		var time_l := _label("%.2fs" % float(rec.time) if not rec.is_empty() else "--", 22, 4, Color(0.85, 0.55, 1.0))
+		var time_l := _label("%.2fs" % float(rec.time) if not rec.is_empty() else "--", 20, 4, Color(0.85, 0.55, 1.0))
 		time_l.custom_minimum_size = Vector2(90, 0)
 		row.add_child(time_l)
 		var who_l := _label(rec.get("who", ""), 18, 4, _color_of(rec.get("who", "")))
@@ -104,7 +114,7 @@ func _panel(parent: Control) -> VBoxContainer:
 	var p := PanelContainer.new()
 	parent.add_child(p)
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 8)
+	v.add_theme_constant_override("separation", 3)
 	p.add_child(v)
 	return v
 
