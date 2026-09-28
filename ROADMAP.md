@@ -26,6 +26,22 @@
 - [x] **Awards:** 16 achievements with coin rewards.
 - [x] **Builds:** Web, Windows, Linux and Android, plus an app icon.
 
+## Phase 6: Party, polish and progression (in progress)
+- [ ] **Rematch with handicap:** a REMATCH button after a race; last place gets a small head start and a full nitro tank.
+- [ ] **Track intro sweep:** a 2-second camera sweep over the track before the start lights.
+- [ ] **Career mode:** a ladder of events against tougher named CPU drivers, unlocking tracks and garage items.
+- [ ] **Win streak "king":** a crown on the pad of whoever won twice in a row, and bonus coins for beating them.
+- [ ] **Race replay:** a slow-motion replay of the best moment (photo finish, rocket hit, splash).
+- [ ] **Haptics pass:** stronger crash/splash vibration, and a light pulse when nitro is ready.
+- [ ] **Per-body engine sounds:** kart buzz, muscle rumble, hover hum.
+- [ ] **Weather mid-race:** rain can start partway through a race.
+- [ ] **Shortcut track:** a risky, faster narrow path.
+- [ ] **Moving obstacles:** a train crossing or a rotating bridge on a new track.
+- [ ] **Second jump track:** a bigger jump with a hill.
+- [ ] **Tournament brackets:** up to 8 friends, heats and a final.
+- [ ] **Weekly challenge track** with a rule (no nitro, night only, ...).
+- [ ] **Shareable ghost codes:** race a friend's best lap.
+
 ## Ideas for later
 - Online high-score sharing, or ghost cars of your best lap
 - More tracks and scenery themes (volcano, space station, city at dusk)
