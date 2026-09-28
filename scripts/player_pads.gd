@@ -78,7 +78,7 @@ var _scale := 0.0
 
 func _ready() -> void:
 	_fit()
-	get_viewport().size_changed.connect(_fit.call_deferred)
+	get_viewport().size_changed.connect(_fit_later)
 	var parent := get_parent() as Control
 	if parent:
 		parent.resized.connect(_fit)
@@ -169,6 +169,10 @@ static func keepouts(area: Rect2, players: int) -> Array:
 
 
 ## Covers the screen at ui_scale(): everything inside is laid out in unscaled units.
+func _fit_later() -> void:
+	_fit.call_deferred()
+
+
 func _fit() -> void:
 	var k := ui_scale()
 	var changed := _scale != 0.0 and k != _scale

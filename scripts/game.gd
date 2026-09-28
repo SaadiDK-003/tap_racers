@@ -204,18 +204,24 @@ func safe_rect() -> Rect2:
 
 ## Keeps a full-screen control inside the safe area (and updates on resize/rotate).
 func fit_to_safe(c: Control) -> void:
-	_apply_insets(c, 1.0)
-	get_tree().root.size_changed.connect(func():
-		if is_instance_valid(c):
-			_apply_insets(c, 1.0))
+	_track_insets(c, 1.0)
 
 
 ## For a background inside a safe-area control: stretch it back out to the edges.
 func bleed(c: Control) -> void:
-	_apply_insets(c, -1.0)
-	get_tree().root.size_changed.connect(func():
-		if is_instance_valid(c):
-			_apply_insets(c, -1.0))
+	_track_insets(c, -1.0)
+
+
+## Applies the insets now and on every resize, until the control leaves the tree
+## (a lambda on the root would otherwise outlive the screen that made it).
+func _track_insets(c: Control, sign: float) -> void:
+	_apply_insets(c, sign)
+	var root := get_tree().root
+	var cb := func(): _apply_insets(c, sign)
+	root.size_changed.connect(cb)
+	c.tree_exiting.connect(func():
+		if root.size_changed.is_connected(cb):
+			root.size_changed.disconnect(cb), CONNECT_ONE_SHOT)
 
 
 func _apply_insets(c: Control, sign: float) -> void:

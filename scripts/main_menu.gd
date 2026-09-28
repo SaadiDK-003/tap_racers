@@ -19,6 +19,8 @@ var _setup: Control # race setup panel (options + players)
 var _settings: Control # sound / music / fullscreen panel
 
 
+var _badge: Control
+
 func _ready() -> void:
 	if Game.debug_coins >= 0:
 		Profile.data.coins = Game.debug_coins
@@ -61,18 +63,21 @@ func _ready() -> void:
 		_show(_setup if Game.get_meta("menu_panel") == "setup" else _settings, true)
 		Game.remove_meta("menu_panel")
 
-	var badge := CoinBadge.new()
-	add_child(badge)
-	badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	var place_badge := func():
-		var sr := Game.safe_rect()
-		badge.position = Vector2(sr.end.x - 190, sr.position.y + 16)
-	place_badge.call()
-	get_viewport().size_changed.connect(place_badge)
+	_badge = CoinBadge.new()
+	add_child(_badge)
+	_badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_place_badge()
+	# A method (not a lambda) so Godot drops the connection when the menu is freed.
+	get_viewport().size_changed.connect(_place_badge)
 	_play_button.grab_focus()
 	get_viewport().size_changed.connect(_on_resized)
 	if not Profile.data.tutorial_done and not bool(Profile.setting("tutorial_offered", false)) and not Game.debug_skip_menu:
 		_offer_tutorial()
+
+
+func _place_badge() -> void:
+	var sr := Game.safe_rect()
+	_badge.position = Vector2(sr.end.x - 190, sr.position.y + 16)
 
 
 # --- Home screen ---------------------------------------------------------------
