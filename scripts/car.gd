@@ -57,7 +57,8 @@ var track
 var effects
 var engine: AudioStreamPlayer
 var body := "classic" # car style from the garage: classic, kart, f1, muscle
-var decal := "none" # none, stripes, number, checker, flames, bolt
+var decal := "none" # none, stripes, number, checker, flames, bolt, polka, stars, zigzag
+var trail_style := "color" # speed trail look from the garage
 var engine_gain := 0.0 # dB offset (CPU engines are quieter)
 var nitro_fill_mult := 1.0 # catch-up: cars further back fill nitro faster
 var lap_clean := true # no crash and no visible slide so far this lap (PERFECT LAP)
@@ -554,6 +555,8 @@ func _draw() -> void:
 		"f1": _draw_f1()
 		"kart": _draw_kart()
 		"muscle": _draw_muscle()
+		"buggy": _draw_buggy()
+		"hover": _draw_hover()
 		_: _draw_classic()
 
 
@@ -650,6 +653,48 @@ func _draw_muscle() -> void:
 	draw_rect(Rect2(hl - 3, hw - 8, 3, 5), Color(1, 1, 0.85))
 
 
+## Dune buggy: small tub, big knobbly rear tyres, a tubular roll cage.
+func _draw_buggy() -> void:
+	var hl := LENGTH * 0.5
+	var hw := WIDTH * 0.5 + 2.0
+	draw_colored_polygon(_rounded(Rect2(-hl + 3, -hw + 5, LENGTH, hw * 2.0), 6), Color(0, 0, 0, 0.35))
+	for wy in [-hw, hw]:
+		_wheel(Vector2(-hl * 0.55, wy), Vector2(15, 9))
+		_wheel(Vector2(hl * 0.6, wy * 0.9), Vector2(11, 7))
+		for k in 3:
+			draw_rect(Rect2(Vector2(-hl * 0.55 - 6 + k * 5, wy - 4.5), Vector2(2, 9)), Color(1, 1, 1, 0.12))
+	_shape(Rect2(-hl + 2, -hw + 5, LENGTH - 6, hw * 2.0 - 10), 5.0, color)
+	_draw_decal(Rect2(-hl + 5, -hw + 7, LENGTH - 12, hw * 2.0 - 14))
+	# Roll cage.
+	var cage := [Vector2(-9, -7), Vector2(7, -7), Vector2(7, 7), Vector2(-9, 7)]
+	for k in 4:
+		draw_line(cage[k], cage[(k + 1) % 4], OUTLINE, 4.0)
+		draw_line(cage[k], cage[(k + 1) % 4], Color(0.85, 0.85, 0.9), 2.0)
+	draw_line(cage[0], cage[2], Color(0.85, 0.85, 0.9), 1.5)
+	draw_circle(Vector2(-2, 0), 5.0, OUTLINE)
+	draw_circle(Vector2(-2, 0), 3.8, color.lightened(0.4))
+	draw_rect(Rect2(hl - 5, -4, 3, 8), Color(1, 1, 0.85))
+
+
+## Hovercraft: no wheels, a rounded hull on a glowing hover skirt with two fans.
+func _draw_hover() -> void:
+	var hl := LENGTH * 0.5
+	var hw := WIDTH * 0.5 + 1.0
+	draw_colored_polygon(_rounded(Rect2(-hl + 4, -hw + 7, LENGTH, hw * 2.0), 11), Color(0, 0, 0, 0.3))
+	var skirt := _rounded(Rect2(-hl - 1, -hw - 1, LENGTH + 2, hw * 2.0 + 2), 12)
+	draw_colored_polygon(skirt, Color(0.15, 0.16, 0.2))
+	var loop := skirt.duplicate()
+	loop.append(skirt[0])
+	draw_polyline(loop, Color(0.4, 0.85, 1.0), 2.5, true)
+	_shape(Rect2(-hl + 3, -hw + 3, LENGTH - 6, hw * 2.0 - 6), 9.0, color)
+	_draw_decal(Rect2(-hl + 6, -hw + 5, LENGTH - 14, hw * 2.0 - 10))
+	_shape(Rect2(-3, -hw + 7, 14, hw * 2.0 - 14), 5.0, Color(0.15, 0.2, 0.3))
+	for y in [-5.5, 5.5]:
+		draw_circle(Vector2(-hl + 5, y), 4.5, OUTLINE)
+		draw_circle(Vector2(-hl + 5, y), 3.2, Color(0.55, 0.58, 0.65))
+		draw_line(Vector2(-hl + 5, y - 3), Vector2(-hl + 5, y + 3), OUTLINE, 1.2)
+
+
 ## Decal painted on the body's top surface.
 func _draw_decal(deck: Rect2) -> void:
 	var cy := deck.get_center().y
@@ -692,6 +737,31 @@ func _draw_decal(deck: Rect2) -> void:
 				for p in pts:
 					inner.append(Vector2(p.x, lerpf(edge, p.y, 0.55)))
 				draw_colored_polygon(inner, Color(1.0, 0.85, 0.2, 0.95))
+		"polka":
+			var rr := maxf(1.6, deck.size.y * 0.13)
+			var x := deck.position.x + rr * 2.0
+			var k := 0
+			while x < deck.end.x - rr:
+				var yy := cy + (deck.size.y * 0.22 if k % 2 == 0 else -deck.size.y * 0.22)
+				draw_circle(Vector2(x, yy), rr, paint)
+				x += rr * 3.2
+				k += 1
+		"stars":
+			var n := 3
+			for k in n:
+				var c := Vector2(deck.position.x + deck.size.x * (k + 0.5) / n, cy)
+				var rr := minf(deck.size.y * 0.32, 5.0)
+				var star := PackedVector2Array()
+				for j in 10:
+					star.append(c + Vector2.from_angle(-PI * 0.5 + j * PI / 5.0) * (rr if j % 2 == 0 else rr * 0.45))
+				draw_colored_polygon(star, Color(1.0, 0.9, 0.3))
+		"zigzag":
+			var pts := PackedVector2Array()
+			var steps := 7
+			for k in steps + 1:
+				var x := deck.position.x + deck.size.x * k / steps
+				pts.append(Vector2(x, cy + (deck.size.y * 0.28 if k % 2 == 0 else -deck.size.y * 0.28)))
+			draw_polyline(pts, paint, 2.5, true)
 		"bolt":
 			var x0 := deck.position.x
 			var w := deck.size.x

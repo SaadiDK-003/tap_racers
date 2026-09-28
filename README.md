@@ -20,7 +20,12 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
   | Winning a Cup | +100 |
   | Daily challenge | +100 |
 
-- **Garage:** each player picks a body (Classic, Kart 150, Formula 250, Muscle 350) and a decal (Plain, Stripes 60, Number 80, Checker 100, Flames 150, Lightning 200). CPUs get random looks.
+- **Garage:** tabs for BODY, DECAL and TRAIL, picked separately for each player:
+  - **Bodies:** Classic, Kart 150, Formula 250, Buggy 300, Muscle 350, Hover 450.
+  - **Decals:** Plain, Stripes 60, Number 80, Polka 90, Checker 100, Stars 120, Zigzag 130, Flames 150, Lightning 200.
+  - **Speed trails:** Classic, Fire 120, Ice 120, Neon 160, Gold 200, Rainbow 300.
+
+  CPUs get random looks.
 - **Records:** best lap on every track (humans only, with who set it), plus races, wins and crashes per player and all-time totals.
 - **Daily challenge:** a new goal every day, shown in the menu, for example "Win a race on Frosty Peaks" or "Fire nitro 3 times in one race". It's the same for everyone on the same date.
 - **Saved settings:** menu choices, sound and music are remembered too. Everything lives in `user://profile.json`.
@@ -121,7 +126,7 @@ godot --path . -- --race --players=4 --map=1 --laps=2 --bots
 ```
 - `--players=1 --cpus=3 --cpu_level=2 --races=3` sets up a race against CPUs. `--log` prints lap times, and `--podium` jumps to a sample Cup podium.
 - `--weather=rain` (or `clear` / `night` / `random`) and `--items=off` set the weather and turn power-ups off.
-- `--scene=garage` (or `records`) opens that screen directly, and `--coins=500` sets the coin balance for testing.
+- `--scene=garage` (or `records`; `--garage_tab=2` opens the trail tab) opens that screen directly, and `--coins=500` sets the coin balance for testing.
 - `--tutorial` starts the tutorial, `--races=0` starts a time trial, and `--autopilot` lets the bot drive P1 while still saving results.
 - `--bots` makes the computer drive every car well. `--bots=reckless` never brakes (to test crashes).
 - `--shot=out.png --shot_time=2` saves a screenshot and quits.

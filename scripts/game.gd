@@ -366,6 +366,7 @@ func _parse_debug_args() -> void:
 				debug_item = value if value in ["rocket", "shield", "mega", "lightning", "mine"] else ""
 			"podium": debug_podium = true
 			"scene": debug_scene = value
+			"garage_tab": set_meta("garage_tab", value.to_int())
 			"coins": debug_coins = value.to_int()
 			"laps": laps = maxi(1, value.to_int())
 			"map": debug_map = value.to_int()

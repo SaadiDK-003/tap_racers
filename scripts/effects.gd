@@ -246,15 +246,30 @@ func _draw_crown(alpha := 1.0) -> void:
 	draw_line(Vector2(-9, -1), Vector2(-11, 5), Color(1, 1, 1, 0.6 * alpha), 2.0)
 
 
+## Colours along a speed trail (index 0 = oldest/tail, fading out) for a garage style.
+static func trail_colors(style: String, base: Color, n: int, t: float, boosting := false) -> PackedColorArray:
+	var out := PackedColorArray()
+	for i in n:
+		var f := float(i) / maxf(n - 1, 1) # 0 at the tail, 1 at the car
+		var a := 0.6 * f
+		var c: Color
+		match style:
+			"fire": c = Color(1.0, 0.15, 0.05).lerp(Color(1.0, 0.9, 0.3), f)
+			"ice": c = Color(0.35, 0.65, 1.0).lerp(Color(0.9, 1.0, 1.0), f)
+			"gold": c = Color(1.0, 0.7, 0.1).lerp(Color(1.0, 0.95, 0.6), 0.5 + 0.5 * sin(f * 9.0 - t * 8.0))
+			"neon": c = Color(1.0, 0.2, 0.75) if int(f * 6.0 + t * 4.0) % 2 == 0 else Color(0.2, 0.95, 1.0)
+			"rainbow": c = Color.from_hsv(fposmod(f * 0.8 - t * 0.6, 1.0), 0.8, 1.0)
+			_: c = Car.NITRO_COLOR if boosting else base
+		out.append(Color(c, a))
+	return out
+
+
 func _draw_additive(ci: CanvasItem) -> void:
 	for car in cars:
 		var pts: PackedVector2Array = car.trail
 		if pts.size() < 2:
 			continue
-		var c: Color = Car.NITRO_COLOR if car.boosting else car.color
-		var colors := PackedColorArray()
-		for i in pts.size():
-			colors.append(Color(c, 0.55 * float(i) / pts.size()))
+		var colors := trail_colors(car.trail_style, car.color, pts.size(), _time, car.boosting)
 		ci.draw_polyline_colors(pts, colors, 7.0 if car.boosting else 5.0, true)
 	if _crown_visible():
 		var p := _crown_pos()

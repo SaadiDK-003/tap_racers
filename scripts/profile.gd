@@ -10,6 +10,8 @@ const BODIES := [
 	{"id": "kart", "name": "KART", "price": 150},
 	{"id": "f1", "name": "FORMULA", "price": 250},
 	{"id": "muscle", "name": "MUSCLE", "price": 350},
+	{"id": "buggy", "name": "BUGGY", "price": 300},
+	{"id": "hover", "name": "HOVER", "price": 450},
 ]
 const DECALS := [
 	{"id": "none", "name": "PLAIN", "price": 0},
@@ -18,6 +20,17 @@ const DECALS := [
 	{"id": "checker", "name": "CHECKER", "price": 100},
 	{"id": "flames", "name": "FLAMES", "price": 150},
 	{"id": "bolt", "name": "LIGHTNING", "price": 200},
+	{"id": "polka", "name": "POLKA", "price": 90},
+	{"id": "stars", "name": "STARS", "price": 120},
+	{"id": "zigzag", "name": "ZIGZAG", "price": 130},
+]
+const TRAILS := [
+	{"id": "color", "name": "CLASSIC", "price": 0},
+	{"id": "fire", "name": "FIRE", "price": 120},
+	{"id": "ice", "name": "ICE", "price": 120},
+	{"id": "neon", "name": "NEON", "price": 160},
+	{"id": "gold", "name": "GOLD", "price": 200},
+	{"id": "rainbow", "name": "RAINBOW", "price": 300},
 ]
 
 const PLACE_COINS := [30, 20, 12, 6]
@@ -108,7 +121,7 @@ func add_coins(amount: int) -> void:
 
 
 func is_unlocked(id: String) -> bool:
-	return data.unlocked.has(id)
+	return data.unlocked.has(id) or id in ["classic", "none", "color"] # free defaults
 
 
 func buy(id: String, price: int) -> bool:
@@ -122,18 +135,22 @@ func buy(id: String, price: int) -> bool:
 	return true
 
 
-## Equipped style for a player slot: [body id, decal id].
+## Equipped style for a player slot: [body id, decal id, trail id].
 func style(slot: int) -> Array:
 	var e: Array = data.equipped
-	return e[slot] if slot < e.size() else ["classic", "none"]
+	var s: Array = (e[slot] as Array).duplicate() if slot < e.size() else []
+	var defaults := ["classic", "none", "color"]
+	while s.size() < defaults.size(): # older saves had no trail
+		s.append(defaults[s.size()])
+	return s
 
 
-func equip(slot: int, body := "", decal := "") -> void:
-	var s: Array = style(slot).duplicate()
-	if body != "":
-		s[0] = body
-	if decal != "":
-		s[1] = decal
+## kind: 0 body, 1 decal, 2 trail.
+func equip(slot: int, kind: int, id: String) -> void:
+	var s: Array = style(slot)
+	s[kind] = id
+	while data.equipped.size() <= slot:
+		data.equipped.append(["classic", "none", "color"])
 	data.equipped[slot] = s
 	save()
 

@@ -58,9 +58,11 @@ func build(map_def, num_cars: int) -> void:
 		if Game.is_cpu(i) or random_styles:
 			var bodies: Array = Profile.BODIES
 			var decals: Array = Profile.DECALS
-			look = [bodies[randi() % bodies.size()].id, decals[randi() % decals.size()].id]
+			var trails: Array = Profile.TRAILS
+			look = [bodies[randi() % bodies.size()].id, decals[randi() % decals.size()].id, trails[randi() % trails.size()].id]
 		car.body = look[0]
 		car.decal = look[1]
+		car.trail_style = look[2]
 		car_layer.add_child(car)
 		car.place()
 		cars.append(car)

@@ -34,6 +34,7 @@ func setup(race_node) -> void:
 		ghost_car.color = Color(0.85, 0.9, 1.0)
 		ghost_car.body = car.body
 		ghost_car.decal = car.decal
+		ghost_car.trail_style = car.trail_style
 		ghost_car.track = race.world.track
 		ghost_car.modulate = Color(0.7, 0.85, 1.0, 0.5)
 		ghost_car.scale = car.scale
