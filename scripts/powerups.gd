@@ -68,7 +68,8 @@ func setup(track_node, lane_count: int) -> void:
 		var dx := -300.0
 		while dx <= 300.0:
 			var c := fposmod(ideal + dx, L)
-			if c > 200.0 and c < L - 200.0 and not track.on_bridge(c) and not track.on_bridge(c + 40.0) and not track.on_bridge(c - 40.0):
+			if c > 200.0 and c < L - 200.0 and not track.on_bridge(c) and not track.on_bridge(c + 40.0) and not track.on_bridge(c - 40.0) \
+					and not track.in_jump_zone(c) and not track.in_jump_zone(c + 60.0):
 				var score := absf(dx) * 0.0005
 				for d in [-40.0, 0.0, 40.0]:
 					score += absf(track.curvature_at(c + d))
@@ -132,7 +133,7 @@ func _check_mines(car, before: float, now: float) -> void:
 	for m in _mines:
 		var lanes: Array[bool] = m.lanes
 		var i: int = car.index
-		if i >= lanes.size() or not lanes[i] or car == m.owner:
+		if i >= lanes.size() or not lanes[i] or car == m.owner or car.airborne:
 			continue
 		if _crossed(before, now, m.s):
 			lanes[i] = false
@@ -216,7 +217,10 @@ func drop_mines(owner) -> void:
 	var lanes: Array[bool] = []
 	for i in track.lane_offsets.size():
 		lanes.append(i != owner.index)
-	_mines.append({"s": owner.progress - 90.0, "lanes": lanes, "owner": owner, "t": 0.0})
+	var ms: float = owner.progress - 90.0
+	while track.in_jump_zone(ms):
+		ms -= 40.0 # never on the ramps or over the water
+	_mines.append({"s": ms, "lanes": lanes, "owner": owner, "t": 0.0})
 
 
 ## Cars ahead of `shooter` (for lightning).

@@ -69,6 +69,12 @@ static func pick(count: int) -> Array:
 	return pool.slice(0, count)
 
 
+const GENERIC := {
+	"splash": ["I can't swim!", "Glub glub...", "Who put water here?!", "Brrr, cold!"],
+	"jump": ["Wheee!", "Look, I'm flying!", "Big air!"],
+}
+
+
 static func line(driver: Dictionary, moment: String) -> String:
-	var options: Array = driver.lines.get(moment, [])
+	var options: Array = driver.lines.get(moment, GENERIC.get(moment, []))
 	return options[randi() % options.size()] if not options.is_empty() else ""

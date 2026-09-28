@@ -62,6 +62,20 @@ func say(car, text: String) -> void:
 	_bubbles.append({"car": car, "text": text, "t": 0.0})
 
 
+## A car falling into the water.
+func splash(p: Vector2) -> void:
+	_waves.append({"p": p, "t": 0.0, "c": Color(0.55, 0.85, 1.0)})
+	for i in 22:
+		var c := Color(0.75, 0.92, 1.0, 0.9) if i % 2 == 0 else Color(1, 1, 1, 0.9)
+		puff(p, c, randf_range(3.0, 7.0), Vector2.from_angle(randf() * TAU) * randf_range(60, 220), randf_range(0.4, 0.7))
+
+
+## Dust kicked up by a landing.
+func land_dust(p: Vector2) -> void:
+	for i in 10:
+		puff(p, Color(0.8, 0.72, 0.6, 0.5), randf_range(5.0, 9.0), Vector2.from_angle(randf() * TAU) * randf_range(30, 90), 0.5)
+
+
 ## A lightning bolt striking down onto a car.
 func bolt(car) -> void:
 	_bolts.append({"car": car, "t": 0.0, "seed": randi()})
@@ -144,6 +158,11 @@ func _process(delta: float) -> void:
 		_crown_t = CROWN_TIME if leader != null else 0.0
 	_crown_pop = maxf(0.0, _crown_pop - delta * 3.0)
 	_crown_t = maxf(0.0, _crown_t - delta)
+	if skid_layer:
+		for car in cars:
+			if car.airborne:
+				skid_layer.queue_redraw()
+				break
 	if _spot_t > 0.0:
 		_spot_t -= delta
 		_firework_t -= delta
@@ -301,5 +320,15 @@ func _draw_additive(ci: CanvasItem) -> void:
 
 
 func _draw_skids(ci: CanvasItem) -> void:
+	# Ground shadows of cars in the air: they stay on the ground and drift away from
+	# the car the higher it flies.
+	var up: float = -(get_parent() as Node2D).rotation
+	for car in cars:
+		if car.airborne:
+			var h: float = car.air_h
+			var p: Vector2 = car.position + Vector2(14, 20).rotated(up) * h
+			ci.draw_set_transform(p, car.rotation, Vector2(1.0, 0.55))
+			ci.draw_circle(Vector2.ZERO, 24.0, Color(0, 0, 0, 0.32 * (1.0 - 0.35 * h)))
+			ci.draw_set_transform(Vector2.ZERO)
 	if _skids.size() >= 2:
 		ci.draw_multiline(_skids, Color(0.02, 0.02, 0.03, 0.35), 4.0)

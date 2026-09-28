@@ -25,6 +25,9 @@ var bridge_point := Vector2.INF
 var bridge_pass := 1
 var bridge_half := 190.0 # bridge length either side of the crossing
 
+## Jump over water: the middle of the water gap (on a straight). INF = no jump.
+var jump_point := Vector2.INF
+
 ## Scenery theme: "city", "forest", "desert", "snow" or "beach" (see scripts/scenery.gd).
 var scenery := "forest"
 var scenery_density := 1.0

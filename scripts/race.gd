@@ -88,6 +88,9 @@ func _ready() -> void:
 		_was_last.append(false)
 		car.near_miss.connect(_on_near_miss)
 		car.shield_used.connect(_on_shield_used)
+		car.jumped.connect(_on_jumped)
+		car.landed.connect(_on_landed)
+		car.splashed.connect(_on_splashed)
 		if Game.is_cpu(car.index):
 			car.engine_gain = -7.0
 
@@ -216,6 +219,8 @@ func _notification(what: int) -> void:
 
 func _is_held(i: int) -> bool:
 	var car = cars[i]
+	if Game.debug_coast and world.track.has_jump() and world.track.dist_to_lip(car.progress) < 130.0 and car.speed > 380.0:
+		return false
 	if Game.debug_bots:
 		if car.bot_wants_nitro():
 			car.fire_nitro()
@@ -568,6 +573,39 @@ func _cpu_says(car, moment: String, chance := 0.6) -> void:
 	_last_said = race_time
 	_said_at[i] = race_time
 	world.effects.say(car, text)
+
+
+func _on_jumped(car, big: bool) -> void:
+	if Game.debug_log:
+		print("JUMP %.2f %s speed %d" % [race_time, _short_name(car.index), int(car.speed)])
+	if Game.debug_shot_on == "jump" and race_time > 2.0:
+		Game.debug_capture(0.13)
+	Sfx.play(Sfx.boost, -8.0, 0.8)
+	if big:
+		pads.toast(car.index, "BIG AIR!", Color(0.5, 0.9, 1.0))
+		_crowd()
+	_cpu_says(car, "jump", 0.25)
+
+
+func _on_landed(car) -> void:
+	Sfx.play(Sfx.crash, -16.0, 1.9)
+	world.effects.land_dust(car.position)
+	world.shake = maxf(world.shake, 0.06)
+
+
+func _on_splashed(car) -> void:
+	if Game.debug_log:
+		print("SPLASH %.2f %s" % [race_time, _short_name(car.index)])
+	if Game.debug_shot_on == "splash":
+		Game.debug_capture(0.25)
+	world.effects.splash(car.position)
+	Sfx.play(Sfx.crash, -4.0, 0.55)
+	Sfx.play(Sfx.boost, -8.0, 0.5) # whoosh of water
+	pads.toast(car.index, "SPLASH!", Color(0.45, 0.8, 1.0), "too slow for the jump")
+	_crowd(true)
+	_cpu_says(car, "splash", 0.8)
+	if Game.is_touch():
+		Input.vibrate_handheld(90)
 
 
 func _on_crash(car) -> void:

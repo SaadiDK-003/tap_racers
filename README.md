@@ -103,7 +103,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 - `maps/*.gd`: one file per track.
 
 ## Maps
-Twelve tracks are in the random rotation, each with its own scenery theme:
+Thirteen tracks are in the random rotation, each with its own scenery theme:
 - Sunset Speedway (night city)
 - Canyon Hairpins (desert)
 - Forest Ring (forest)
@@ -116,6 +116,9 @@ Twelve tracks are in the random rotation, each with its own scenery theme:
 - **Orbit Station**: a rounded triangle in space, with station modules, satellites, planets and stars.
 - **Farmland Twist**: countryside S-bends past crop fields, barns, hay bales and cows. It's one of the harder tracks.
 - **Harbor Docks**: an L-shaped circuit around a port, with container yards, boats, cranes and dock lamps.
+- **Splash Canyon**: a desert canyon with a **jump over a river**. Hit the ramp at speed (at least about two-thirds of top speed) to fly across. Too slow and it's a SPLASH, and you come back on the far bank. Nitro gives BIG AIR.
+
+For your own jump track, set `m.jump_point` to the middle of the water gap on a long straight. The river is drawn automatically and stops before it reaches any other part of the road.
 
 Scenery (`scripts/scenery.gd`) is generated automatically in the empty ground around and inside each track, along with tyre walls outside the corners, a grandstand at the start line and spectator parking lots.
 
@@ -135,7 +138,7 @@ godot --path . -- --race --players=4 --map=1 --laps=2 --bots
 - `--menu_panel=setup` (or `settings`) opens that menu panel directly.
 - `--scene=garage` (or `records`; `--garage_tab=2` opens the trail tab) opens that screen directly, and `--coins=500` sets the coin balance for testing.
 - `--tutorial` starts the tutorial, `--races=0` starts a time trial, and `--autopilot` lets the bot drive P1 while still saving results.
-- `--bots` makes the computer drive every car well. `--bots=reckless` never brakes (to test crashes).
+- `--bots` makes the computer drive every car well. `--bots=coast` makes them let go before a jump, to test splashes. `--bots=reckless` never brakes (to test crashes).
 - `--shot=out.png --shot_time=2` saves a screenshot and quits.
 
 ## Exporting

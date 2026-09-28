@@ -54,6 +54,9 @@ static func build(track, map, view := {}) -> Array[Dictionary]:
 	var grid := {}
 	var road_half: float = map.road_width * 0.5
 
+	# Keep every prop out of the river (invisible placeholder props along it).
+	for q in track.river_points():
+		_register(grid, props, {"k": "river_space", "p": q, "r": track.JUMP_GAP * 0.5 + 30.0, "rot": 0.0, "seed": 0, "c": Color.WHITE})
 	_add_grandstand(track, map, field, props, grid)
 	_add_parking_lots(track, map, field, props, grid, rng, view)
 	_add_tire_walls(track, map, field, props, grid)
@@ -175,7 +178,7 @@ static func _add_grandstand(track, map, field: Dictionary, props: Array[Dictiona
 				var q: Vector2 = c + tg * along + normal * side * across
 				if _field_dist(field, q) < road_half + 14.0:
 					ok = false
-		if ok:
+		if ok and not _overlaps(grid, props, c, 110.0):
 			_register(grid, props, {"k": "grandstand", "p": c, "r": 120.0, "rot": tg.angle(), "seed": 7, "c": Color.WHITE})
 			return
 

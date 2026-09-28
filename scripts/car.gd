@@ -9,6 +9,9 @@ signal boost_started(car)
 signal nitro_ready(car)
 signal near_miss(car) # slid right to the edge of a crash and saved it
 signal shield_used(car) # the shield power-up just blocked a crash or a rocket
+signal jumped(car, big: bool) # left the ramp over the water (big = on nitro)
+signal landed(car)
+signal splashed(car) # too slow for the jump: fell in the water
 
 enum State { GRID, RACING, CRASHED, FINISHED }
 
@@ -34,6 +37,8 @@ const SLIP_RECOVER := 6.0 # how fast the car regains grip once back under it
 const SLIP_VISIBLE := 0.25 # below this the car looks perfectly planted
 const MAX_DRIFT := 10.0 # sideways slide (px) just before a crash
 const CRASH_TIME := 1.1
+const JUMP_MIN := 470.0 # speed needed at the ramp to clear the water
+const SPLASH_TIME := 1.1
 const CRUISE_SPEED := 220.0
 const LENGTH := 42.0
 const WIDTH := 24.0
@@ -70,6 +75,9 @@ var shield := false: # power-up: blocks the next crash or rocket, for SHIELD_TIM
 var shield_time := 0.0
 const ZAP_TIME := 2.0
 var zap_t := 0.0 # lightning: shrunk and slowed while > 0
+var airborne := false # flying over the water gap
+var air_h := 0.0 # 0..~1 height while airborne (for scale and shadow)
+var _sink := false # current "crash" is a splash into the water
 var _base_scale := Vector2.ZERO
 const SHIELD_TIME := 10.0
 var mega := false # power-up: the next nitro burst lasts longer
@@ -183,20 +191,26 @@ func tick(delta: float, held: bool) -> void:
 	# Lightning shrink: pop small, then grow back over the last half second.
 	if _base_scale == Vector2.ZERO:
 		_base_scale = scale
+	var k := 1.0
 	if zap_t > 0.0:
 		zap_t = maxf(0.0, zap_t - delta)
-		var k := lerpf(0.65, 1.0, clampf((0.5 - zap_t) / 0.5, 0.0, 1.0)) if zap_t < 0.5 else 0.65
-		scale = _base_scale * k
-	elif scale != _base_scale:
-		scale = _base_scale
+		k *= lerpf(0.65, 1.0, clampf((0.5 - zap_t) / 0.5, 0.0, 1.0)) if zap_t < 0.5 else 0.65
+	if airborne:
+		k *= 1.0 + 0.45 * air_h # closer to the camera while in the air
+	if _sink and state == State.CRASHED:
+		k *= lerpf(0.45, 1.0, clampf(_crash_timer / SPLASH_TIME, 0.0, 1.0)) # sinking
+	scale = _base_scale * k
 
 	if _invuln > 0.0:
 		_invuln -= delta
 		modulate.a = 0.35 if int(_invuln * 12.0) % 2 == 0 else 1.0
 	else:
 		modulate.a = 1.0
-	# On a figure-8, cars on the bridge are drawn above the bridge deck, others below it.
-	z_index = 2 if track.has_bridge() and track.on_bridge(progress) and state != State.CRASHED else 0
+	if _sink and state == State.CRASHED:
+		modulate.a = clampf(_crash_timer / SPLASH_TIME * 1.6, 0.0, 1.0)
+	# On a figure-8, cars on the bridge are drawn above the bridge deck, others below it;
+	# cars in the air fly over everything.
+	z_index = 2 if airborne or (track.has_bridge() and track.on_bridge(progress) and state != State.CRASHED) else 0
 	queue_redraw()
 	_glow.queue_redraw()
 	_flame.queue_redraw()
@@ -209,7 +223,9 @@ func _drive(delta: float, held: bool) -> void:
 
 	# Speed eases in and out instead of snapping: strong pull from low speed that
 	# tapers off near the top, and a brake that softens as the car slows down.
-	if state == State.FINISHED:
+	if airborne:
+		pass # no grip in the air: speed carries over the gap
+	elif state == State.FINISHED:
 		speed = move_toward(speed, CRUISE_SPEED, DRAG * delta)
 	elif held or boosting:
 		var target := BOOST_SPEED if boosting else TOP_SPEED
@@ -226,7 +242,9 @@ func _drive(delta: float, held: bool) -> void:
 
 	var safe := sqrt(GRIP * grip_mult / maxf(absf(k), 0.00001))
 	var over := speed / safe - 1.0 - SLIP_TOLERANCE
-	if boosting or _grace > 0.0:
+	if airborne:
+		slip = 0.0
+	elif boosting or _grace > 0.0:
 		# Nitro: the car can't crash, it just drifts a little for style.
 		_grace = maxf(0.0, _grace - delta)
 		slip = clampf(over * 2.0, 0.0, 0.55) if boosting else maxf(0.0, slip - SLIP_RECOVER * delta)
@@ -241,6 +259,8 @@ func _drive(delta: float, held: bool) -> void:
 	var visible_slip := maxf(0.0, slip - SLIP_VISIBLE) / (1.0 - SLIP_VISIBLE)
 	_drift = lerpf(_drift, visible_slip * MAX_DRIFT * _slide_dir, minf(1.0, 12.0 * delta))
 	progress += speed * delta
+	if track.has_jump() and _check_jump():
+		return
 	position = track.point_at(progress, lane_offset + _drift)
 	var heading: float = track.tangent_at(progress).angle() - _slide_dir * visible_slip * 0.25
 	rotation = lerp_angle(rotation, heading, 1.0 - exp(-TURN_SMOOTHING * delta))
@@ -357,6 +377,44 @@ func bot_wants_nitro() -> bool:
 	return true
 
 
+## Take-off, flight and landing over the water gap. Returns true if the car just
+## splashed (the rest of this frame's driving is skipped).
+func _check_jump() -> bool:
+	var f: float = track.jump_fraction(progress)
+	if airborne:
+		if f < 0.0:
+			airborne = false
+			air_h = 0.0
+			landed.emit(self)
+		else:
+			air_h = sin(PI * f) * clampf(speed / TOP_SPEED, 0.75, 1.25)
+	elif f >= 0.0 and f < 0.5:
+		if speed >= JUMP_MIN or state == State.FINISHED:
+			airborne = true
+			_drift = 0.0
+			jumped.emit(self, speed > TOP_SPEED * 1.05)
+		else:
+			_splash()
+			return true
+	return false
+
+
+func _splash() -> void:
+	state = State.CRASHED
+	crashes += 1
+	lap_clean = false
+	boosting = false
+	_sink = true
+	_crash_timer = SPLASH_TIME
+	_crash_vel = track.tangent_at(progress) * speed * 0.35
+	_spin = 0.0
+	speed = 0.0
+	slip = 0.0
+	_drift = 0.0
+	position = track.point_at(progress, lane_offset)
+	splashed.emit(self)
+
+
 func _rear_wheels() -> PackedVector2Array:
 	var fwd := Vector2.from_angle(rotation)
 	var side := fwd.orthogonal() * WIDTH * 0.5 * scale.x
@@ -374,6 +432,8 @@ func _leave_skids() -> void:
 
 func _crash(outward: float) -> void:
 	state = State.CRASHED
+	airborne = false
+	air_h = 0.0
 	crashes += 1
 	boosting = false
 	nitro = 0.0
@@ -401,8 +461,15 @@ func _crashed(delta: float) -> void:
 	_crash_vel = _crash_vel.move_toward(Vector2.ZERO, 650.0 * delta)
 	rotation += _spin * delta
 	_spin = move_toward(_spin, 0.0, 7.0 * delta)
-	_emit_smoke(delta, 0.06, Color(0.3, 0.3, 0.32, 0.5))
+	if _sink:
+		_crash_vel = _crash_vel.move_toward(Vector2.ZERO, 900.0 * delta)
+	else:
+		_emit_smoke(delta, 0.06, Color(0.3, 0.3, 0.32, 0.5))
 	if _crash_timer <= 0.0:
+		# Out of the water (or a crash that ended over it): back on the landing ramp.
+		if _sink or (track.has_jump() and track.jump_fraction(progress) >= 0.0):
+			progress = track.jump_lip() + track.JUMP_GAP + track.JUMP_RAMP * 0.6 + floorf((progress - track.jump_lip()) / track.length) * track.length
+		_sink = false
 		state = State.RACING
 		_invuln = 1.0
 		place()
@@ -438,6 +505,9 @@ func _update_engine() -> void:
 ## `skill` scales how close to each corner's limit it drives; a gentle per-car wobble
 ## keeps CPUs from driving identically.
 func bot_throttle(skill := 1.0, top_share := 1.0) -> bool:
+	# Approaching the jump: floor it, whatever the usual speed cap.
+	if track.has_jump() and track.dist_to_lip(progress) < 420.0 and speed < JUMP_MIN * 1.2:
+		return true
 	if not boosting and speed > TOP_SPEED * top_share:
 		return false
 	skill *= 1.0 + 0.03 * sin(progress / 280.0 + index * 1.7)

@@ -44,6 +44,7 @@ const MAPS := [
 	preload("res://maps/orbit_station.gd"),
 	preload("res://maps/farmland_twist.gd"),
 	preload("res://maps/harbor_docks.gd"),
+	preload("res://maps/splash_canyon.gd"),
 ]
 
 var num_players := 2 # humans
@@ -73,6 +74,7 @@ var _used_maps: Array[int] = []
 var debug_map := -1
 var debug_bots := false
 var debug_reckless := false # bots never brake (tests crashes)
+var debug_coast := false
 var debug_log := false # print lap times and results
 var debug_item := "" # --items=rocket (shield, mega, lightning, mine): every box gives that item
 var debug_perf := false # print render stats (draw calls, primitives, fps)
@@ -429,6 +431,7 @@ func _parse_debug_args() -> void:
 			"bots":
 				debug_bots = true
 				debug_reckless = value == "reckless"
+				debug_coast = value == "coast" # lets go before the jump ramp (tests splashes)
 			"race": debug_skip_menu = true
 			"shot":
 				debug_shot = value
