@@ -98,6 +98,10 @@ var debug_skip_menu := false
 
 func _ready() -> void:
 	randomize()
+	# Phones with 90/120 Hz screens would otherwise run the game at 120 fps, heat up
+	# and throttle (stutter) after a few minutes. 60 is plenty.
+	if OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios"):
+		Engine.max_fps = 60
 	_setup_input()
 	_parse_debug_args()
 	get_tree().root.size_changed.connect(_update_layout)

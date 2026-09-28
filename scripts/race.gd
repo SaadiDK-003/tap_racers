@@ -17,6 +17,9 @@ const CE = preload("res://scripts/career_events.gd")
 enum Phase { INTRO, COUNTDOWN, RACING, RESULTS }
 
 const INTRO_TIME := 2.4 # camera sweep over the track before the lights
+# Zoom of the sweep. The track is baked once at the normal size (a sharper second
+# bake just for the intro cost phones a freeze and a lot of memory), so keep it mild.
+const INTRO_ZOOM := 1.4
 
 const COUNTDOWN_TIME := 3.3 # red lights at 0.3s, 1.3s, 2.3s, green at 3.3s
 const FINISH_GRACE := 15.0 # seconds the others get after the winner crosses the line
@@ -143,7 +146,6 @@ func _ready() -> void:
 	var intro := not (Game.debug_bots or Game.debug_log or Game.tutorial or Game.debug_no_intro)
 	if intro:
 		phase = Phase.INTRO
-		world.bake_boost = 1.8 # sharp while zoomed in
 		world.hold_view = true
 	_fit_world()
 	get_viewport().size_changed.connect(_fit_world)
@@ -285,7 +287,7 @@ func _update_intro(f: float) -> void:
 	var L: float = world.track.length
 	var e := 1.0 - pow(1.0 - clampf(f, 0.0, 1.0), 2.0) # ease out
 	var p: Vector2 = world.track.point_at(L * (0.45 + 0.55 * e) - 30.0, 0.0)
-	world.view_at(p, 1.8, smoothstep(0.6, 1.0, f))
+	world.view_at(p, INTRO_ZOOM, smoothstep(0.6, 1.0, f))
 
 
 func _intro_skip() -> bool:
@@ -299,8 +301,6 @@ func _intro_skip() -> bool:
 
 func _end_intro() -> void:
 	world.end_view()
-	world.bake_boost = 1.0
-	world.refresh_bake()
 	phase = Phase.COUNTDOWN
 	create_tween().tween_property(_lights, "modulate:a", 1.0, 0.2)
 

@@ -16,7 +16,6 @@ var weather := "clear" # clear, rain or night
 var cars: Array = []
 var shake := 0.0 # seconds of screen shake left
 var hold_view := false # the race is moving the camera itself (intro sweep)
-var bake_boost := 1.0 # draw the track sharper than needed (for zooming in)
 var fit_scale := 1.0
 var _fit_center := Vector2.ZERO
 var _bake_area := Rect2()
@@ -173,13 +172,7 @@ func _update_scenery_view(ui_keepouts: Array) -> void:
 	var window_px := float(get_tree().root.size.x) / maxf(screen.x, 1.0)
 	_bake_area = area.grow(40.0 / scale.x)
 	_bake_k = clampf(scale.x * window_px, 0.4, 2.5)
-	track.bake(_bake_area, _bake_k * bake_boost)
-
-
-## Re-draws the baked track at the current bake_boost (e.g. back to normal after a zoom).
-func refresh_bake() -> void:
-	if _bake_area.has_area():
-		track.bake(_bake_area, _bake_k * bake_boost)
+	track.bake(_bake_area, _bake_k)
 
 
 ## Camera for the intro: centred on track point `p` at `zoom` x the fitted size,
@@ -188,7 +181,16 @@ func view_at(p: Vector2, zoom: float, blend: float) -> void:
 	var s := lerpf(fit_scale * zoom, fit_scale, blend)
 	var zoomed := _fit_center - Transform2D(rotation, Vector2(s, s), 0.0, Vector2.ZERO) * p
 	scale = Vector2(s, s)
-	position = zoomed.lerp(_base_pos, blend)
+	var pos := zoomed.lerp(_base_pos, blend)
+	# The zoomed view is the fitted view scaled by z around some screen point A. With
+	# A on screen, it never shows ground outside the baked (fitted) area.
+	var z := s / fit_scale
+	if z > 1.001:
+		var a := (pos - _base_pos * z) / (1.0 - z)
+		var screen := get_viewport_rect().size
+		a = a.clamp(Vector2.ZERO, screen)
+		pos = a + (_base_pos - a) * z
+	position = pos
 
 
 func end_view() -> void:

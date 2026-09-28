@@ -44,7 +44,8 @@ var _press_anim: Array[float] = [0.0, 0.0, 0.0, 0.0]
 var _font: FontVariation
 var _pill_style: StyleBoxFlat
 var _badge_style: StyleBoxFlat
-var _base: TextureRect # the static layer (drawn behind this node)
+var _base: Control # shows the static layer (drawn behind this node)
+var _base_k := 1.0 # texture pixels per pad unit
 var _base_vp: SubViewport # renders the static layer...
 var _base_painter: Control # ...with this node's _draw_base
 var _base_drawn := -1 # _base_key() of what _base shows
@@ -101,12 +102,12 @@ func _ready() -> void:
 	_base_painter.draw.connect(_draw_base)
 	_base_vp.add_child(_base_painter)
 	add_child(_base_vp)
-	_base = TextureRect.new()
-	_base.texture = _base_vp.get_texture()
+	# Shows only each pad's own rectangle of that texture: a full-screen see-through
+	# quad would make phone GPUs blend every pixel of the screen for nothing.
+	_base = Control.new()
 	_base.show_behind_parent = true
 	_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_base.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_base.stretch_mode = TextureRect.STRETCH_SCALE
+	_base.draw.connect(_show_base)
 	add_child(_base)
 	_resize_base()
 	_font = Game.hud_font()
@@ -348,13 +349,40 @@ func _geom(i: int) -> Dictionary:
 ## Sizes the static layer's texture to real screen pixels (sharp on phones).
 func _resize_base() -> void:
 	var k := scale.x * get_tree().root.get_final_transform().get_scale().x
+	_base_k = k
 	_base_vp.size = Vector2i(maxi(1, ceili(size.x * k)), maxi(1, ceili(size.y * k)))
 	_base_vp.oversampling_override = k # rasterize its text at that size too
 	_base_painter.scale = Vector2(k, k)
 	_base_painter.size = size
 	_base.position = Vector2.ZERO
 	_base.size = size
+	_base.queue_redraw()
 	_redraw_base()
+
+
+func _show_base() -> void:
+	var tex := _base_vp.get_texture()
+	var screen := Rect2(Vector2.ZERO, size)
+	for i in num_players:
+		var r := _pad_rect(i).intersection(screen)
+		if r.has_area():
+			_base.draw_texture_rect_region(tex, r, Rect2(r.position * _base_k, r.size * _base_k))
+
+
+## Everything the static layer draws for pad `i`: its band from the corner, the
+## button and the pill.
+func _pad_rect(i: int) -> Rect2:
+	var g := _geom(i)
+	var c: Vector2 = g.c
+	var corner: Vector2 = g.corner
+	var r := Rect2(c, Vector2.ZERO).grow(RADIUS + 18.0)
+	r = r.expand(Vector2(size.x * corner.x, size.y * corner.y))
+	var reach: float = RADIUS + float(g.pill_len) + 4.0
+	if g.landscape:
+		r = r.expand(c + Vector2(0, g.inward * reach))
+	else:
+		r = r.expand(c + Vector2(g.toward * reach, 0))
+	return r.grow(2.0)
 
 
 func _redraw_base() -> void:

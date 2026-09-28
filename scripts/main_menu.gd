@@ -371,8 +371,13 @@ func _build_demo() -> void:
 	back_layer.layer = -1
 	add_child(back_layer)
 	back_layer.add_child(_demo)
-	_demo.build(map, 4)
+	# Kept light: it runs the whole time the menu is open (3 cars, no smoke or skids).
+	_demo.build(map, 3)
 	_demo.effects.show_tags = false
+	_demo.effects.visible = false
+	_demo.effects.set_process(false)
+	for car in _demo.cars:
+		car.effects = null # no smoke, sparks or skid marks to update
 	for car in _demo.cars:
 		car.state = Car.State.RACING
 		car.progress = -22.0 - car.index * 260.0

@@ -5,7 +5,9 @@ extends Node2D
 const DrawLayer = preload("res://scripts/draw_layer.gd")
 const Car = preload("res://scripts/car.gd")
 const FontWarmer = preload("res://scripts/font_warmer.gd")
-const MAX_SKID_POINTS := 1600
+const MAX_SKID_POINTS := 1200
+const MAX_PUFFS := 70 # smoke / spray on screen at once (each is a see-through circle)
+const MAX_SPARKS := 90
 
 var cars: Array = []
 var show_tags := true
@@ -46,6 +48,8 @@ func _ready() -> void:
 
 
 func puff(p: Vector2, col: Color, radius: float, vel := Vector2.ZERO, life := 0.7) -> void:
+	if _puffs.size() >= MAX_PUFFS:
+		return
 	_puffs.append({"p": p, "v": vel, "t": 0.0, "life": life, "r": radius, "c": col})
 
 
@@ -126,8 +130,8 @@ func shockwave(p: Vector2, col: Color) -> void:
 func skid(a: Vector2, b: Vector2) -> void:
 	_skids.append(a)
 	_skids.append(b)
-	if _skids.size() > MAX_SKID_POINTS:
-		_skids = _skids.slice(_skids.size() - MAX_SKID_POINTS)
+	if _skids.size() > MAX_SKID_POINTS + 200:
+		_skids = _skids.slice(_skids.size() - MAX_SKID_POINTS) # trim in chunks, not every mark
 	if skid_layer:
 		skid_layer.queue_redraw()
 
@@ -144,6 +148,8 @@ func _process(delta: float) -> void:
 		s.p += s.v * delta
 		s.v *= 0.9
 	_sparks = _sparks.filter(func(s): return s.t < s.life)
+	if _sparks.size() > MAX_SPARKS:
+		_sparks = _sparks.slice(_sparks.size() - MAX_SPARKS)
 	for b in _bolts:
 		b.t += delta
 	_bolts = _bolts.filter(func(b): return b.t < 0.4)
