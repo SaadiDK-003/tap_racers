@@ -30,6 +30,7 @@ const PLAYER_KEYS := [[KEY_L], [KEY_A], [KEY_V], [KEY_UP]]
 
 # Map registry: add a new map script here and it joins the random rotation.
 const Drivers = preload("res://scripts/drivers.gd")
+const CareerEvents = preload("res://scripts/career_events.gd")
 
 const MAPS := [
 	preload("res://maps/sunset_speedway.gd"),
@@ -57,6 +58,8 @@ var weather_mode := 0 # 0 random, 1 clear, 2 rain, 3 night
 const WEATHER_MODES := ["RANDOM", "CLEAR", "RAIN", "NIGHT"]
 
 var tutorial := false # the guided "how to play" race
+var career_event := -1 # >= 0 while racing a career event
+var _career_backup := {} # the player's own race settings, restored after career
 var retry_map := -1 # race this map again instead of a random one (time trial retry, rematch)
 
 # Championship state.
@@ -268,7 +271,7 @@ func load_settings() -> void:
 
 
 func save_settings() -> void:
-	if debug_bots or debug_log or debug_shot != "" or OS.get_cmdline_user_args().size() > 0:
+	if is_career() or debug_bots or debug_log or debug_shot != "" or OS.get_cmdline_user_args().size() > 0:
 		return # test runs must not overwrite the player's settings
 	for pair in [["players", num_players], ["cpus", num_cpus], ["cpu_level", cpu_level], ["races", races], ["laps", laps], ["items", items_on], ["weather", weather_mode], ["sound", Sfx.enabled], ["music", Sfx.music_enabled]]:
 		Profile.data.settings[pair[0]] = pair[1]
@@ -335,6 +338,48 @@ func _assign_drivers() -> void:
 		cpu_drivers.append(picks[i])
 
 
+func is_career() -> bool:
+	return career_event >= 0
+
+
+## Sets up career event `i`: P1 against its three named rivals. The player's own
+## race settings are kept aside and come back with end_career().
+func start_career(i: int) -> void:
+	if not is_career():
+		_career_backup = {"num_players": num_players, "num_cpus": num_cpus, "cpu_level": cpu_level,
+			"laps": laps, "races": races, "items_on": items_on, "weather_mode": weather_mode}
+	var e: Dictionary = CareerEvents.event(i)
+	career_event = i
+	tutorial = false
+	num_players = 1
+	num_cpus = MAX_PLAYERS - 1
+	cpu_level = e.level
+	laps = e.laps
+	races = 1
+	items_on = e.items
+	weather_mode = e.weather
+	start_cup()
+	# Slot 0 is the player; it still gets a (spare) personality so driver() never re-rolls.
+	cpu_drivers = []
+	for d in Drivers.ROSTER:
+		if not e.rivals.has(d.name):
+			cpu_drivers.append(d)
+			break
+	for rival in e.rivals:
+		for d in Drivers.ROSTER:
+			if d.name == rival:
+				cpu_drivers.append(d)
+
+
+func end_career() -> void:
+	if not is_career():
+		return
+	career_event = -1
+	for k in _career_backup:
+		set(k, _career_backup[k])
+	_career_backup = {}
+
+
 func is_championship() -> bool:
 	return races > 1 and not tutorial
 
@@ -388,6 +433,8 @@ func next_map():
 	var idx := randi() % MAPS.size()
 	if tutorial:
 		idx = TUTORIAL_MAP
+	elif is_career():
+		idx = CareerEvents.event(career_event).map
 	elif retry_map >= 0:
 		idx = retry_map
 		retry_map = -1
@@ -441,6 +488,7 @@ func _parse_debug_args() -> void:
 				debug_reckless = value == "reckless"
 				debug_coast = value == "coast" # lets go before the jump ramp (tests splashes)
 			"race": debug_skip_menu = true
+			"career": set_meta("career", value.to_int()) # with --race: race career event N
 			"shot":
 				debug_shot = value
 			"shot_time": debug_shot_time = value.to_float()

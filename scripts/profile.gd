@@ -60,6 +60,8 @@ const ACHIEVEMENTS := [
 	["world_tour", "WORLD TOUR", "Win on every track", 150],
 	["record", "RECORD BREAKER", "Set a new time-trial best lap", 40],
 	["stylish", "STYLE ICON", "Unlock 3 garage items", 30],
+	["career", "CAREER STAR", "Win Blaze's Final in career mode", 150],
+	["superstar", "SUPERSTAR", "Earn every star in career mode", 200],
 ]
 
 var data := {}
@@ -87,6 +89,7 @@ func _defaults() -> Dictionary:
 		"achievements": [],
 		"map_wins": {}, # map title -> human wins there
 		"settings": {},
+		"career": [], # stars bitmask per career event
 	}
 
 
@@ -321,6 +324,42 @@ func _check_achievements(race: Dictionary, car: Dictionary) -> void:
 		unlock("nitro5")
 	if car.get("rocket_hits", 0) >= 3:
 		unlock("rocket3")
+
+
+# --- Career ------------------------------------------------------------------------
+
+## Stars bitmask earned so far on career event `i`.
+func career_stars(i: int) -> int:
+	var c: Array = data.career
+	return int(c[i]) if i < c.size() else 0
+
+
+func career_unlocked(i: int) -> bool:
+	return i == 0 or career_stars(i - 1) & Game.CareerEvents.PODIUM != 0
+
+
+func career_total() -> int:
+	var total := 0
+	for i in Game.CareerEvents.count():
+		total += Game.CareerEvents.star_count(career_stars(i))
+	return total
+
+
+## Saves a career result; returns {new: bitmask of stars earned for the first time, coins}.
+func record_career(i: int, bits: int) -> Dictionary:
+	var before := career_stars(i)
+	var fresh := bits & ~before
+	while data.career.size() <= i:
+		data.career.append(0)
+	data.career[i] = before | bits
+	var coins := Game.CareerEvents.star_count(fresh) * Game.CareerEvents.STAR_COINS
+	add_coins(coins)
+	if i == Game.CareerEvents.count() - 1 and bits & Game.CareerEvents.WIN:
+		unlock("career")
+	if career_total() == Game.CareerEvents.count() * 3:
+		unlock("superstar")
+	save()
+	return {"new": fresh, "coins": coins}
 
 
 # --- Tutorial and time trial -------------------------------------------------------

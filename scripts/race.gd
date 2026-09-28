@@ -10,6 +10,8 @@ const Confetti = preload("res://scripts/confetti.gd")
 const RainLayer = preload("res://scripts/rain_layer.gd")
 const TutorialCoach = preload("res://scripts/tutorial_coach.gd")
 const TimeTrial = preload("res://scripts/time_trial.gd")
+const StarRow = preload("res://scripts/star_row.gd")
+const CE = preload("res://scripts/career_events.gd")
 
 enum Phase { INTRO, COUNTDOWN, RACING, RESULTS }
 
@@ -118,6 +120,9 @@ func _ready() -> void:
 		_sub_label.text += "\nNIGHT RACE"
 	if Game.is_championship():
 		_sub_label.text = "RACE %d OF %d\n%s" % [Game.cup_race + 1, Game.races, _sub_label.text]
+	if Game.is_career():
+		var e: Dictionary = CE.event(Game.career_event)
+		_sub_label.text = "EVENT %d  •  %s\n%s\nGOAL: %s" % [Game.career_event + 1, e.title, _sub_label.text, CE.goal_text(Game.career_event)]
 	if Game.tutorial:
 		coach = TutorialCoach.new()
 		add_child(coach)
@@ -861,6 +866,8 @@ func _show_results() -> void:
 	var heading: String = world.map.title.to_upper()
 	if cup:
 		heading = "RACE %d OF %d  •  %s" % [Game.cup_race, Game.races, heading]
+	elif Game.is_career():
+		heading = "EVENT %d  •  %s" % [Game.career_event + 1, CE.event(Game.career_event).title]
 	box.add_child(_make_label(24, 6, heading))
 	var title := _make_label(52, 10, "%s WINS!" % Game.racer_name(winner.index))
 	title.add_theme_color_override("font_color", winner.color)
@@ -870,6 +877,9 @@ func _show_results() -> void:
 		var r := _wrap_label(rewards)
 		r.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
 		box.add_child(r)
+	var career_bits := -1
+	if Game.is_career():
+		career_bits = _career_result(order)
 	for rank in order.size():
 		box.add_child(_result_row(rank, order[rank], given[order[rank].index] if cup else -1))
 
@@ -883,7 +893,27 @@ func _show_results() -> void:
 		next_fn = func(): get_tree().change_scene_to_file("res://scenes/podium.tscn")
 	var buttons: Array[Button] = []
 	box.add_child(_make_label(8, 0))
-	if cup:
+	if career_bits >= 0:
+		# Career: NEXT EVENT once it's unlocked, RETRY, and back to the ladder.
+		var ev := Game.career_event
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		var retry := _make_button("RETRY", func():
+			Game.start_career(ev)
+			get_tree().reload_current_scene(), career_bits & CE.PODIUM == 0)
+		row.add_child(retry)
+		buttons.append(retry)
+		if ev + 1 < CE.count() and Profile.career_unlocked(ev + 1):
+			var nxt := _make_button("NEXT EVENT", func():
+				Game.start_career(ev + 1)
+				get_tree().reload_current_scene(), true)
+			row.add_child(nxt)
+			buttons.append(nxt)
+		for b in row.get_children():
+			b.custom_minimum_size.x = 214
+		box.add_child(row)
+	elif cup:
 		var again := _make_button(next_text, next_fn, true)
 		box.add_child(again)
 		buttons.append(again)
@@ -902,7 +932,7 @@ func _show_results() -> void:
 			row.add_child(b)
 			buttons.append(b)
 		box.add_child(row)
-	var menu := _make_button("MENU", _go_menu)
+	var menu := _make_button("CAREER" if career_bits >= 0 else "MENU", _go_menu)
 	box.add_child(menu)
 	buttons.append(menu)
 	if Game.is_landscape_layout():
@@ -957,6 +987,54 @@ func _record_profile(order: Array) -> String:
 	if not parts.is_empty():
 		Sfx.play(Sfx.lap, -4.0, 1.2)
 	return "  •  ".join(parts)
+
+
+## Career: works out P1's stars, saves them and adds the star row to the results.
+## Returns the stars earned this race (bitmask).
+func _career_result(order: Array) -> int:
+	var ev := Game.career_event
+	var car = cars[0]
+	var margin := 99.0
+	if finish_order.size() >= 2:
+		margin = finish_order[1].finish_time - finish_order[0].finish_time
+	var stats := {"place": order.find(car) + 1, "crashes": car.crashes, "nitros": _nitros[0],
+		"close_calls": _close[0], "perfect_laps": _perfect[0], "rocket_hits": _rocket_hits[0], "margin": margin}
+	var bits := CE.stars_for(ev, stats)
+	var result := Profile.record_career(ev, bits) if not Game.debug_bots else {"new": 0, "coins": 0}
+	if Game.debug_log:
+		print("CAREER event %d stats %s stars %d new %d" % [ev + 1, str(stats), bits, int(result.new)])
+	var h := HBoxContainer.new()
+	h.alignment = BoxContainer.ALIGNMENT_CENTER
+	h.add_theme_constant_override("separation", 18)
+	h.add_child(StarRow.new(bits, 40, int(result.new)))
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	var lines := [["PODIUM", CE.PODIUM], ["WIN", CE.WIN], ["GOAL: " + CE.goal_text(ev), CE.GOAL]]
+	for pair in lines:
+		var got: bool = bits & int(pair[1]) != 0
+		var l := _make_label(17, 4, pair[0])
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		l.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3) if got else Color(1, 1, 1, 0.45))
+		v.add_child(l)
+	h.add_child(v)
+	_results_box.add_child(h)
+	var msg := ""
+	if int(result.coins) > 0:
+		msg = "+%d COINS FOR NEW STARS" % int(result.coins)
+	if bits & CE.PODIUM and ev + 1 < CE.count() and int(result.new) & CE.PODIUM:
+		msg += ("  •  " if msg != "" else "") + "EVENT %d UNLOCKED!" % (ev + 2)
+	elif bits & CE.PODIUM == 0:
+		msg = "Finish on the podium to unlock the next event"
+	if msg != "":
+		var m := _wrap_label(msg)
+		m.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4) if bits & CE.PODIUM else Color(1, 0.6, 0.5))
+		_results_box.add_child(m)
+	var awards := Profile.take_recent_achievements()
+	if not awards.is_empty():
+		var a := _wrap_label(("NEW AWARD: " if awards.size() == 1 else "NEW AWARDS: ") + ", ".join(awards))
+		a.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+		_results_box.add_child(a)
+	return bits
 
 
 ## Results for the tutorial and the time trial (just P1).
@@ -1076,4 +1154,7 @@ func _result_row(rank: int, car, points := -1) -> Control:
 
 
 func _go_menu() -> void:
+	if Game.is_career():
+		get_tree().change_scene_to_file("res://scenes/career.tscn")
+		return
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

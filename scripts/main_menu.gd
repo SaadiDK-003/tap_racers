@@ -5,6 +5,7 @@ extends Control
 const RaceWorld = preload("res://scripts/race_world.gd")
 const Car = preload("res://scripts/car.gd")
 const CoinBadge = preload("res://scripts/coin_badge.gd")
+const StarRow = preload("res://scripts/star_row.gd")
 
 var _controls_box: VBoxContainer
 var _cpu_buttons: Array[Button] = []
@@ -17,9 +18,8 @@ var _play_button: Button
 var _summary: Label
 var _setup: Control # race setup panel (options + players)
 var _settings: Control # sound / music / fullscreen panel
-
-
 var _badge: Control
+
 
 func _ready() -> void:
 	if Game.debug_coins >= 0:
@@ -42,6 +42,11 @@ func _ready() -> void:
 		return
 	if Game.debug_skip_menu:
 		Game.debug_skip_menu = false
+		if Game.has_meta("career"):
+			Game.start_career(clampi(Game.get_meta("career"), 0, Game.CareerEvents.count() - 1))
+			Game.remove_meta("career")
+			get_tree().change_scene_to_file.call_deferred("res://scenes/race.tscn")
+			return
 		Game.num_cpus = clampi(Game.num_cpus, 1 if Game.num_players == 1 else 0, Game.MAX_PLAYERS - Game.num_players)
 		_start.call_deferred()
 		return
@@ -140,6 +145,7 @@ func _build_home() -> void:
 				Game.save_settings()
 				get_tree().change_scene_to_file(target), Vector2(223, 76))
 		grid.add_child(b)
+	right.add_child(_center_wrap(_career_button()))
 	right.add_child(_center_wrap(grid))
 	right.add_child(_daily_chip())
 
@@ -154,6 +160,38 @@ func _build_home() -> void:
 	gear.draw.connect(func(): _draw_gear(gear))
 	gear.pressed.connect(func(): _show(_settings, true))
 	add_child(gear)
+
+
+## CAREER, with the stars earned so far.
+func _career_button() -> Button:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(460, 80)
+	b.focus_mode = Control.FOCUS_NONE
+	var gold := Color(1.0, 0.82, 0.2)
+	b.add_theme_stylebox_override("normal", Game.make_style(Color(0.2, 0.15, 0.05, 0.95), 18, gold, 4))
+	b.add_theme_stylebox_override("hover", Game.make_style(Color(0.28, 0.21, 0.07, 0.95), 18, gold, 4))
+	b.add_theme_stylebox_override("pressed", Game.make_style(Color(0.14, 0.1, 0.03, 0.95), 18, gold, 4))
+	b.pressed.connect(func():
+		Game.save_settings()
+		get_tree().change_scene_to_file("res://scenes/career.tscn"))
+	var c := CenterContainer.new()
+	c.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(c)
+	var h := HBoxContainer.new()
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_theme_constant_override("separation", 14)
+	c.add_child(h)
+	var t := _label("CAREER", 32, 8, gold)
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(t)
+	var star := StarRow.new(1, 26, 0, 1)
+	star.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(star)
+	var n := _label("%d/%d" % [Profile.career_total(), Game.CareerEvents.count() * 3], 24, 6)
+	n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(n)
+	return b
 
 
 func _draw_gear(ci: Control) -> void:
