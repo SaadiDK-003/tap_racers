@@ -41,6 +41,9 @@ const MAPS := [
 	preload("res://maps/volcano_rush.gd"),
 	preload("res://maps/neon_nights.gd"),
 	preload("res://maps/autumn_valley.gd"),
+	preload("res://maps/orbit_station.gd"),
+	preload("res://maps/farmland_twist.gd"),
+	preload("res://maps/harbor_docks.gd"),
 ]
 
 var num_players := 2 # humans

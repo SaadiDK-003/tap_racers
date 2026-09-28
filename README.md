@@ -92,7 +92,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 - `maps/*.gd`: one file per track.
 
 ## Maps
-Nine tracks are in the random rotation, each with its own scenery theme:
+Twelve tracks are in the random rotation, each with its own scenery theme:
 - Sunset Speedway (night city)
 - Canyon Hairpins (desert)
 - Forest Ring (forest)
@@ -102,12 +102,15 @@ Nine tracks are in the random rotation, each with its own scenery theme:
 - **Volcano Rush**: a heart-shaped track with lava pools, smoking vents and glowing cracks. It's the hardest track.
 - **Neon Nights**: a dog-bone track through a dark city with glowing neon signs.
 - **Autumn Valley**: a flowing forest track in autumn colours.
+- **Orbit Station**: a rounded triangle in space, with station modules, satellites, planets and stars.
+- **Farmland Twist**: countryside S-bends past crop fields, barns, hay bales and cows. It's one of the harder tracks.
+- **Harbor Docks**: an L-shaped circuit around a port, with container yards, boats, cranes and dock lamps.
 
 Scenery (`scripts/scenery.gd`) is generated automatically in the empty ground around and inside each track, along with tyre walls outside the corners, a grandstand at the start line and spectator parking lots.
 
 ## Adding a map
 1. Copy `maps/sunset_speedway.gd` and change `title`, `points` and the colours. The track is scaled automatically to fit between the button strips, so use any coordinates (a tall shape fits best). The first point is the start line (put it on a straight). Keep separate parts of the road at least ~160 units apart so they never touch.
-2. Set `m.scenery` to `"city"`, `"forest"`, `"desert"`, `"snow"`, `"beach"`, `"volcano"` or `"neon"`. `m.scenery_palette` can recolour the props; Autumn Valley uses it for autumn trees.
+2. Set `m.scenery` to `"city"`, `"forest"`, `"desert"`, `"snow"`, `"beach"`, `"volcano"`, `"neon"`, `"space"`, `"farm"` or `"harbor"`. `m.scenery_palette` can recolour the props; Autumn Valley uses it for autumn trees.
 3. Check the layout with `godot --headless --path . --script res://tools/check_tracks.gd`. It flags corners that are too tight and parts of the road that come too close together.
 4. Add it to `MAPS` in `scripts/game.gd` (and to the list in `tools/check_tracks.gd`). It then joins the random rotation.
 
