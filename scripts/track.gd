@@ -216,11 +216,15 @@ func _build_visuals() -> void:
 	_bake_root = Node2D.new()
 	_bake_vp.add_child(_bake_root)
 	_add_layer(_draw_ground, _bake_root)
-	var shadow := _make_line(map.road_width + 40.0, Color(0, 0, 0, 0.35))
+	# Drop shadow: drawn opaque inside a CanvasGroup, which then fades the whole group
+	# at once, so overlapping discs don't stack up darker.
+	var shadow := CanvasGroup.new()
+	shadow.self_modulate = Color(1, 1, 1, 0.35)
 	shadow.position = Vector2(0, 10)
 	_bake_root.add_child(shadow)
+	_add_layer(func(ci): _draw_band(ci, map.road_width + 40.0, Color.BLACK), shadow)
 	_add_layer(_draw_curbs, _bake_root)
-	_bake_root.add_child(_make_line(map.road_width, map.road))
+	_add_layer(func(ci): _draw_band(ci, map.road_width, map.road), _bake_root)
 	_add_layer(_draw_details, _bake_root)
 	_scenery_layer = _add_layer(func(ci): Scenery.draw_all(ci, _props), _bake_root)
 	_baked = Sprite2D.new()
@@ -289,15 +293,12 @@ func _add_layer(fn: Callable, parent: Node) -> Node2D:
 	return layer
 
 
-func _make_line(width: float, color: Color) -> Line2D:
-	var line := Line2D.new()
-	line.points = _pos
-	line.closed = true
-	line.width = width
-	line.default_color = color
-	line.joint_mode = Line2D.LINE_JOINT_ROUND
-	line.antialiased = true
-	return line
+## A band of `width` along the centre line, drawn as overlapping discs. Unlike a thick
+## line, its edges stay perfectly smooth on bends tighter than half its width.
+func _draw_band(ci: CanvasItem, width: float, color: Color) -> void:
+	var r := width * 0.5
+	for i in _n:
+		ci.draw_circle(_pos[i], r, color, true, -1.0, true)
 
 
 # --- Drawing ----------------------------------------------------------------

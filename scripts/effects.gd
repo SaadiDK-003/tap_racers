@@ -8,7 +8,7 @@ const MAX_SKID_POINTS := 1600
 
 var cars: Array = []
 var show_tags := true
-var leader = null # car currently in 1st place; gets a crown (null = no crown)
+var leader = null # car currently in 1st place (null = none)
 var skid_layer: Node2D # set by the owner; placed between the track and the cars
 
 var _puffs: Array[Dictionary] = []
@@ -18,7 +18,10 @@ var _skids := PackedVector2Array()
 var _glow_layer: Node2D
 var _font: FontVariation
 var _time := 0.0
-var _crown_pop := 0.0 # bounces the crown when the lead changes
+const CROWN_TIME := 3.0 # seconds the crown shows after someone takes the lead
+const CROWN_AHEAD := 40.0 # drawn this far in front of the car, so the car stays visible
+var _crown_pop := 0.0 # bounces the crown when it appears
+var _crown_t := 0.0 # time left to show the crown
 var _last_leader = null
 
 
@@ -80,7 +83,9 @@ func _process(delta: float) -> void:
 	if leader != _last_leader:
 		_last_leader = leader
 		_crown_pop = 1.0
+		_crown_t = CROWN_TIME if leader != null else 0.0
 	_crown_pop = maxf(0.0, _crown_pop - delta * 3.0)
+	_crown_t = maxf(0.0, _crown_t - delta)
 	queue_redraw()
 	_glow_layer.queue_redraw()
 
@@ -99,12 +104,12 @@ func _draw() -> void:
 			draw_circle(Vector2.ZERO, 12.0, Color(0.02, 0.03, 0.05))
 			draw_circle(Vector2.ZERO, 9.5, Color(1.0, 0.8, 0.1) if car.slip < 0.75 else Color(1.0, 0.25, 0.15))
 			draw_string(_font, Vector2(-10, 6), "!", HORIZONTAL_ALIGNMENT_CENTER, 20, 17, Color(0.05, 0.05, 0.05))
-	if leader != null and leader.state != Car.State.CRASHED:
-		# Sits right on the leader's car (screen-upright) so it's clear whose it is.
+	if _crown_visible():
+		# In front of the new leader for a few seconds, then it fades away.
 		var bob := sin(_time * 5.0) * 1.5
-		var pop := 1.05 * (1.0 + 0.6 * _crown_pop)
-		draw_set_transform(leader.position + Vector2(0, -4.0 + bob).rotated(up), up + sin(_time * 3.0) * 0.08, Vector2(pop, pop))
-		_draw_crown()
+		var pop := 1.0 + 0.6 * _crown_pop
+		draw_set_transform(_crown_pos() + Vector2(0, bob).rotated(up), up + sin(_time * 3.0) * 0.08, Vector2(pop, pop))
+		_draw_crown(_crown_alpha())
 	if show_tags:
 		for car in cars:
 			draw_set_transform(car.position + Vector2(0, -35).rotated(up), up)
@@ -113,9 +118,21 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO)
 
 
-func _draw_crown() -> void:
-	var gold := Color(1.0, 0.8, 0.15)
-	var outline := Color(0.02, 0.03, 0.05)
+func _crown_visible() -> bool:
+	return leader != null and _crown_t > 0.0 and leader.state != Car.State.CRASHED
+
+
+func _crown_alpha() -> float:
+	return clampf(_crown_t / 0.5, 0.0, 1.0) # fades out over the last half second
+
+
+func _crown_pos() -> Vector2:
+	return leader.position + Vector2.from_angle(leader.rotation) * CROWN_AHEAD * leader.scale.x
+
+
+func _draw_crown(alpha := 1.0) -> void:
+	var gold := Color(1.0, 0.8, 0.15, alpha)
+	var outline := Color(0.02, 0.03, 0.05, alpha)
 	var shape := PackedVector2Array([
 		Vector2(-14, 8), Vector2(-15, -7), Vector2(-7, 0), Vector2(0, -12),
 		Vector2(7, 0), Vector2(15, -7), Vector2(14, 8),
@@ -129,9 +146,9 @@ func _draw_crown() -> void:
 	# Jewels on the tips and a shine.
 	for tip in [Vector2(-15, -7), Vector2(0, -12), Vector2(15, -7)]:
 		draw_circle(tip, 3.5, outline)
-		draw_circle(tip, 2.3, Color(1.0, 0.3, 0.35))
-	draw_circle(Vector2(0, 5.5), 2.0, Color(0.35, 0.8, 1.0))
-	draw_line(Vector2(-9, -1), Vector2(-11, 5), Color(1, 1, 1, 0.6), 2.0)
+		draw_circle(tip, 2.3, Color(1.0, 0.3, 0.35, alpha))
+	draw_circle(Vector2(0, 5.5), 2.0, Color(0.35, 0.8, 1.0, alpha))
+	draw_line(Vector2(-9, -1), Vector2(-11, 5), Color(1, 1, 1, 0.6 * alpha), 2.0)
 
 
 func _draw_additive(ci: CanvasItem) -> void:
@@ -144,9 +161,9 @@ func _draw_additive(ci: CanvasItem) -> void:
 		for i in pts.size():
 			colors.append(Color(c, 0.55 * float(i) / pts.size()))
 		ci.draw_polyline_colors(pts, colors, 7.0 if car.boosting else 5.0, true)
-	if leader != null and leader.state != Car.State.CRASHED:
-		var p: Vector2 = leader.position
-		ci.draw_texture_rect(Car.glow_texture(), Rect2(p - Vector2(34, 34), Vector2(68, 68)), false, Color(1.0, 0.75, 0.2, 0.4))
+	if _crown_visible():
+		var p := _crown_pos()
+		ci.draw_texture_rect(Car.glow_texture(), Rect2(p - Vector2(30, 30), Vector2(60, 60)), false, Color(1.0, 0.75, 0.2, 0.4 * _crown_alpha()))
 	for w in _waves:
 		var k: float = w.t / 0.45
 		ci.draw_arc(w.p, 20.0 + 110.0 * k, 0.0, TAU, 48, Color(w.c, 0.9 * (1.0 - k)), 8.0 * (1.0 - k) + 2.0, true)
