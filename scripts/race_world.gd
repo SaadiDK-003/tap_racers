@@ -15,6 +15,12 @@ var powerups: Powerups # null when items are off
 var weather := "clear" # clear, rain or night
 var cars: Array = []
 var shake := 0.0 # seconds of screen shake left
+var hold_view := false # the race is moving the camera itself (intro sweep)
+var bake_boost := 1.0 # draw the track sharper than needed (for zooming in)
+var fit_scale := 1.0
+var _fit_center := Vector2.ZERO
+var _bake_area := Rect2()
+var _bake_k := 1.0
 var random_styles := false # menu demo: every car gets a random look
 
 var _base_pos := Vector2.ZERO
@@ -136,6 +142,8 @@ func fit(area: Rect2, max_scale := 1.6, ui_keepouts: Array = []) -> void:
 	var s := minf(minf(area.size.x / size.x, area.size.y / size.y), max_scale)
 	rotation = -PI * 0.5 if turn else 0.0
 	scale = Vector2(s, s)
+	fit_scale = s
+	_fit_center = area.get_center()
 	_base_pos = area.get_center() - Transform2D(rotation, scale, 0.0, Vector2.ZERO) * b.get_center()
 	position = _base_pos
 	_update_scenery_view(ui_keepouts)
@@ -163,10 +171,35 @@ func _update_scenery_view(ui_keepouts: Array) -> void:
 	for v in visible:
 		area = area.expand(v)
 	var window_px := float(get_tree().root.size.x) / maxf(screen.x, 1.0)
-	track.bake(area.grow(40.0 / scale.x), clampf(scale.x * window_px, 0.4, 2.5))
+	_bake_area = area.grow(40.0 / scale.x)
+	_bake_k = clampf(scale.x * window_px, 0.4, 2.5)
+	track.bake(_bake_area, _bake_k * bake_boost)
+
+
+## Re-draws the baked track at the current bake_boost (e.g. back to normal after a zoom).
+func refresh_bake() -> void:
+	if _bake_area.has_area():
+		track.bake(_bake_area, _bake_k * bake_boost)
+
+
+## Camera for the intro: centred on track point `p` at `zoom` x the fitted size,
+## blending (0..1) into the normal fitted view.
+func view_at(p: Vector2, zoom: float, blend: float) -> void:
+	var s := lerpf(fit_scale * zoom, fit_scale, blend)
+	var zoomed := _fit_center - Transform2D(rotation, Vector2(s, s), 0.0, Vector2.ZERO) * p
+	scale = Vector2(s, s)
+	position = zoomed.lerp(_base_pos, blend)
+
+
+func end_view() -> void:
+	hold_view = false
+	scale = Vector2(fit_scale, fit_scale)
+	position = _base_pos
 
 
 func _process(delta: float) -> void:
+	if hold_view:
+		return
 	if shake > 0.0:
 		shake = maxf(0.0, shake - delta)
 		var a := shake * 28.0

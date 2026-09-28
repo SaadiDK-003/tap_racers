@@ -67,6 +67,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 - **Awards** (menu button): 16 achievements, for example *Spotless*, *Comeback Kid*, *Rocketeer* (hit 3 cars with rockets) and *World Tour*. Each pays coins once, and new ones show on the results screen.
 
 ## Race moments
+- **Intro sweep:** before the start lights, the camera glides zoomed-in along the track to the grid and zooms out. It takes about 2.4 s; tap or press any player key to skip. `--intro=off` turns it off.
 - **Pop-ups by each player's corner:** OVERTAKE!, TOOK THE LEAD!, FASTEST LAP!, and NITRO READY!.
 - **CLOSE CALL!:** slide right to the edge of a crash and save it to earn bonus nitro.
 - **PERFECT LAP!:** a lap with no crash and no slides earns bonus nitro. This one is for humans only.

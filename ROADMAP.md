@@ -28,7 +28,7 @@
 
 ## Phase 6: Party, polish and progression (in progress)
 - [x] **Rematch with handicap:** a REMATCH button after a race; last place gets a small head start and a full nitro tank.
-- [ ] **Track intro sweep:** a 2-second camera sweep over the track before the start lights.
+- [x] **Track intro sweep:** a 2-second camera sweep over the track before the start lights.
 - [ ] **Career mode:** a ladder of events against tougher named CPU drivers, unlocking tracks and garage items.
 - [ ] **Win streak "king":** a crown on the pad of whoever won twice in a row, and bonus coins for beating them.
 - [ ] **Race replay:** a slow-motion replay of the best moment (photo finish, rocket hit, splash).

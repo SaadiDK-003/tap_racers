@@ -76,6 +76,7 @@ var debug_map := -1
 var debug_bots := false
 var debug_reckless := false # bots never brake (tests crashes)
 var debug_coast := false
+var debug_no_intro := false # --intro=off
 var debug_log := false # print lap times and results
 var debug_item := "" # --items=rocket (shield, mega, lightning, mine): every box gives that item
 var debug_perf := false # print render stats (draw calls, primitives, fps)
@@ -412,6 +413,7 @@ func _parse_debug_args() -> void:
 			"tutorial": tutorial = true
 			"log": debug_log = true
 			"rematch": rematch_boost = value.to_int() # test the rematch head start
+			"intro": debug_no_intro = value == "off"
 			"touch": _touch_seen = true # preview the phone layout on desktop
 			"safe":
 				var v := value.split(",")

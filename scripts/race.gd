@@ -11,7 +11,9 @@ const RainLayer = preload("res://scripts/rain_layer.gd")
 const TutorialCoach = preload("res://scripts/tutorial_coach.gd")
 const TimeTrial = preload("res://scripts/time_trial.gd")
 
-enum Phase { COUNTDOWN, RACING, RESULTS }
+enum Phase { INTRO, COUNTDOWN, RACING, RESULTS }
+
+const INTRO_TIME := 2.4 # camera sweep over the track before the lights
 
 const COUNTDOWN_TIME := 3.3 # red lights at 0.3s, 1.3s, 2.3s, green at 3.3s
 const FINISH_GRACE := 15.0 # seconds the others get after the winner crosses the line
@@ -58,6 +60,7 @@ var _was_last: Array[bool] = [] # was last after lap 1 (COMEBACK KID)
 var _weather := "clear"
 # Solo modes.
 var _underdog = null # rematch: the car with the head start
+var _intro_t := 0.0
 var coach: TutorialCoach
 var trial: TimeTrial
 
@@ -133,8 +136,17 @@ func _ready() -> void:
 		add_child(trial)
 		trial.setup(self)
 		_sub_label.text = "TIME TRIAL\n" + _sub_label.text
+	# Intro sweep (skipped in tests and the tutorial).
+	var intro := not (Game.debug_bots or Game.debug_log or Game.tutorial or Game.debug_no_intro)
+	if intro:
+		phase = Phase.INTRO
+		world.bake_boost = 1.8 # sharp while zoomed in
+		world.hold_view = true
 	_fit_world()
 	get_viewport().size_changed.connect(_fit_world)
+	if intro:
+		_lights.modulate.a = 0.0
+		_update_intro(0.0)
 	Sfx.play_music("")
 
 
@@ -158,6 +170,11 @@ func _process(delta: float) -> void:
 	if _paused:
 		return
 	match phase:
+		Phase.INTRO:
+			_intro_t += delta
+			_update_intro(_intro_t / INTRO_TIME)
+			if _intro_t >= INTRO_TIME or _intro_skip():
+				_end_intro()
 		Phase.COUNTDOWN:
 			_countdown -= delta
 			var elapsed := COUNTDOWN_TIME - _countdown
@@ -208,7 +225,7 @@ func _process(delta: float) -> void:
 			if car.state == Car.State.RACING and car.speed > 350.0 and randf() < delta * 14.0:
 				var rear: Vector2 = car.position - Vector2.from_angle(car.rotation) * 22.0
 				world.effects.puff(rear, Color(0.8, 0.86, 0.95, 0.3), randf_range(5, 9), Vector2.from_angle(randf() * TAU) * 30.0, 0.5)
-	world.effects.leader = order[0] if phase != Phase.COUNTDOWN and cars.size() > 1 else null
+	world.effects.leader = order[0] if (phase == Phase.RACING or phase == Phase.RESULTS) and cars.size() > 1 else null
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -258,6 +275,31 @@ func _update_catch_up(order: Array) -> void:
 		var behind := float(place) / (n - 1)
 		var gap := clampf((lead - car.progress) / world.track.length, 0.0, 1.0)
 		car.nitro_fill_mult = 1.0 + 0.7 * behind + 0.6 * gap
+
+
+## Camera glides along the second half of the lap to the grid, then zooms out.
+func _update_intro(f: float) -> void:
+	var L: float = world.track.length
+	var e := 1.0 - pow(1.0 - clampf(f, 0.0, 1.0), 2.0) # ease out
+	var p: Vector2 = world.track.point_at(L * (0.45 + 0.55 * e) - 30.0, 0.0)
+	world.view_at(p, 1.8, smoothstep(0.6, 1.0, f))
+
+
+func _intro_skip() -> bool:
+	if _intro_t < 0.3:
+		return false
+	for i in mini(Game.num_players, cars.size()):
+		if Input.is_action_pressed(Game.action_name(i)) or pads.is_held(i):
+			return true
+	return false
+
+
+func _end_intro() -> void:
+	world.end_view()
+	world.bake_boost = 1.0
+	world.refresh_bake()
+	phase = Phase.COUNTDOWN
+	create_tween().tween_property(_lights, "modulate:a", 1.0, 0.2)
 
 
 func _start_race() -> void:
