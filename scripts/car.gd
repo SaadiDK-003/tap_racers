@@ -67,6 +67,9 @@ var shield := false: # power-up: blocks the next crash or rocket, for SHIELD_TIM
 		shield = v
 		shield_time = SHIELD_TIME if v else 0.0
 var shield_time := 0.0
+const ZAP_TIME := 2.0
+var zap_t := 0.0 # lightning: shrunk and slowed while > 0
+var _base_scale := Vector2.ZERO
 const SHIELD_TIME := 10.0
 var mega := false # power-up: the next nitro burst lasts longer
 var night := false # draw headlight beams
@@ -176,6 +179,15 @@ func tick(delta: float, held: bool) -> void:
 		shield_time -= delta
 		if shield_time <= 0.0:
 			shield = false
+	# Lightning shrink: pop small, then grow back over the last half second.
+	if _base_scale == Vector2.ZERO:
+		_base_scale = scale
+	if zap_t > 0.0:
+		zap_t = maxf(0.0, zap_t - delta)
+		var k := lerpf(0.65, 1.0, clampf((0.5 - zap_t) / 0.5, 0.0, 1.0)) if zap_t < 0.5 else 0.65
+		scale = _base_scale * k
+	elif scale != _base_scale:
+		scale = _base_scale
 
 	if _invuln > 0.0:
 		_invuln -= delta
@@ -200,6 +212,8 @@ func _drive(delta: float, held: bool) -> void:
 		speed = move_toward(speed, CRUISE_SPEED, DRAG * delta)
 	elif held or boosting:
 		var target := BOOST_SPEED if boosting else TOP_SPEED
+		if zap_t > 0.0:
+			target = TOP_SPEED * 0.55
 		if speed < target:
 			var rate := BOOST_ACCEL if speed >= TOP_SPEED else ACCEL
 			var taper := 0.45 + 0.55 * (1.0 - speed / target)
@@ -252,6 +266,21 @@ func _drive(delta: float, held: bool) -> void:
 			if _peak_slip > 0.65:
 				near_miss.emit(self)
 			_peak_slip = 0.0
+
+
+## Hit by lightning: shrunk and slowed for ZAP_TIME, unless a shield blocks it.
+## Returns true if the car was zapped.
+func zap() -> bool:
+	if state != State.RACING:
+		return false
+	if shield:
+		shield = false
+		shield_used.emit(self)
+		return false
+	zap_t = ZAP_TIME
+	speed = minf(speed, TOP_SPEED * 0.55)
+	boosting = false
+	return true
 
 
 ## Hit by a rocket: blown off the track (even mid-nitro), unless a shield blocks it.

@@ -28,8 +28,13 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
   - **SHIELD:** a bubble that blocks your next crash or rocket. It lasts 10 s and blinks before it runs out.
   - **ROCKET:** homes in on the car ahead of you (or 2nd place, if you're leading) and blows it off the track, even mid-nitro. A shield blocks it. The target gets a "ROCKET INCOMING!" warning.
   - **MEGA NITRO:** fills your tank, and the next burst lasts longer.
+  - **LIGHTNING:** strikes every car ahead of you, shrinking and slowing them for 2 s. It's a rare comeback item and never given to the leader.
+  - **MINES:** drops a mine in every other lane behind you. The next car in each lane is blown off the track.
+  - **TRIPLE ROCKET:** three rockets, one after another. It's a rare jackpot.
 
-  Cars at the back mostly get rockets and nitro; the leader mostly gets shields. When you hit a box, a roulette icon spins over your car for a moment before it lands on your item.
+  Shields block rockets, mines and lightning.
+
+  Cars at the back mostly get rockets, lightning and nitro; the leader mostly gets shields and mines. When you hit a box, a roulette icon spins over your car for a moment before it lands on your item.
 - **Winner moment:** a spotlight follows the winner while fireworks burst around their car in their colour.
 - **WEATHER (RANDOM / CLEAR / RAIN / NIGHT):**
   - **Rain** means less grip in corners, rain streaks, spray behind cars and rain sound.

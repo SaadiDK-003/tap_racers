@@ -71,6 +71,7 @@ func _ready() -> void:
 		world.powerups.effects = world.effects
 		world.powerups.picked.connect(_on_pickup)
 		world.powerups.rocket_hit.connect(_on_rocket_hit)
+		world.powerups.mine_hit.connect(_on_mine_hit)
 	var weather := Game.pick_weather()
 	_weather = weather
 	world.set_weather(weather)
@@ -429,6 +430,8 @@ func _on_pickup(car, item: String) -> void:
 	if coach:
 		coach.on_pickup()
 	Sfx.play(Sfx.pickup, -4.0)
+	if Game.debug_shot_on == item and race_time > 3.0:
+		Game.debug_capture({"lightning": 0.12, "mine": 0.9, "triple": 0.5}.get(item, 0.1))
 	match item:
 		"shield":
 			car.shield = true
@@ -447,6 +450,47 @@ func _on_pickup(car, item: String) -> void:
 			car.add_nitro(1.0)
 			car.mega = true
 			pads.toast(i, "MEGA NITRO!", Car.NITRO_COLOR, "" if Game.is_cpu(i) else "DOUBLE-TAP!")
+		"lightning":
+			var zapped := 0
+			for c in world.powerups.cars_ahead(car):
+				world.effects.bolt(c)
+				if c.zap():
+					zapped += 1
+					pads.toast(c.index, "ZAPPED!", Color(1.0, 0.9, 0.3), "by " + _short_name(i))
+			pads.toast(i, "LIGHTNING!", Color(1.0, 0.9, 0.3), "zapped %d car%s" % [zapped, "" if zapped == 1 else "s"])
+			_flash_rect.color = Color(1, 1, 0.85, 0.35)
+			create_tween().tween_property(_flash_rect, "color:a", 0.0, 0.3)
+			Sfx.play(Sfx.crash, -4.0, 1.7)
+			world.shake = maxf(world.shake, 0.2)
+		"mine":
+			world.powerups.drop_mines(car)
+			pads.toast(i, "MINES DROPPED!", Color(1.0, 0.45, 0.3), "behind you")
+			Sfx.play(Sfx.beep, -6.0, 0.7)
+		"triple":
+			pads.toast(i, "TRIPLE ROCKET!", Color(1.0, 0.55, 0.2))
+			_fire_triple(car)
+
+
+func _fire_triple(car) -> void:
+	for n in 3:
+		if phase != Phase.RACING or car.state == Car.State.CRASHED:
+			return
+		var target = world.powerups.fire_rocket(car)
+		if target != null:
+			pads.toast(target.index, "ROCKET INCOMING!", Color(1.0, 0.35, 0.3), "x%d" % (3 - n) if n < 2 else "")
+			Sfx.play(Sfx.boost, -5.0, 1.6 + n * 0.15)
+		await get_tree().create_timer(0.35).timeout
+
+
+func _on_mine_hit(target, owner) -> void:
+	Sfx.play(Sfx.crash, -2.0, 0.9)
+	world.shake = maxf(world.shake, 0.3)
+	if target.rocket_hit():
+		pads.toast(target.index, "MINE!", Color(1.0, 0.45, 0.2), "dropped by " + _short_name(owner.index))
+		pads.toast(owner.index, "MINE HIT!", Color(1.0, 0.85, 0.2), _short_name(target.index) + " went boom")
+		_rocket_hits[owner.index] += 1
+	else:
+		pads.toast(owner.index, "BLOCKED!", Color(0.45, 0.9, 1.0), _short_name(target.index) + " had a shield")
 
 
 func _on_rocket_hit(target, shooter) -> void:

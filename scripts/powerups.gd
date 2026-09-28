@@ -5,10 +5,17 @@ extends Node2D
 ##   ROCKET     - homes in on the car ahead (or 2nd place, if you lead) and blows it
 ##                off the track, unless that car has a shield
 ##   MEGA NITRO - fills your nitro tank and makes the next burst last longer
-## Cars at the back mostly get rockets and nitro; the leader mostly gets shields.
+##   LIGHTNING  - every car ahead of you is shrunk and slowed for 2 s (rare, mostly for
+##                the cars at the back)
+##   MINE       - drops a mine in every other lane behind you; a car driving over one
+##                is blown off the track
+##   TRIPLE     - three rockets, one after another (rare jackpot)
+## Shields block rockets, mines and lightning. Cars at the back mostly get rockets,
+## lightning and nitro; the leader mostly gets shields and mines.
 
 signal picked(car, item: String)
 signal rocket_hit(target, shooter)
+signal mine_hit(target, owner)
 
 const Car = preload("res://scripts/car.gd")
 const DrawLayer = preload("res://scripts/draw_layer.gd")
@@ -32,7 +39,9 @@ var _glow: Node2D
 var _roulette: Array[Dictionary] = [] # {car, item, t} item boxes still spinning
 var _icons: Node2D # roulette icons, drawn above the cars
 const ROULETTE_TIME := 0.75
-const ITEMS := ["shield", "rocket", "mega"]
+const ITEMS := ["shield", "rocket", "mega", "lightning", "mine", "triple"]
+const MINE_LIFE := 15.0
+var _mines: Array[Dictionary] = [] # {s, lanes: Array[bool] (live mine per lane), owner, t}
 
 
 func setup(track_node, lane_count: int) -> void:
@@ -80,6 +89,9 @@ func _process(delta: float) -> void:
 		for i in boxes.size():
 			boxes[i] = maxf(0.0, boxes[i] - delta)
 	_update_rockets(delta)
+	for m in _mines:
+		m.t += delta
+	_mines = _mines.filter(func(m): return m.t < MINE_LIFE and m.lanes.has(true))
 	for r in _roulette:
 		r.t += delta
 		if r.t >= ROULETTE_TIME:
@@ -99,6 +111,7 @@ func update_cars(places: Array[int]) -> void:
 		_prev[car] = now
 		if car.state != Car.State.RACING or now <= before:
 			continue
+		_check_mines(car, before, now)
 		for spot in _spots:
 			if _crossed(before, now, spot.s) and car.index < spot.boxes.size() and spot.boxes[car.index] <= 0.0:
 				spot.boxes[car.index] = RESPAWN
@@ -106,6 +119,19 @@ func update_cars(places: Array[int]) -> void:
 					_roulette.append({"car": car, "item": _roll(places[car.index], cars.size()), "t": 0.0})
 					if Game.debug_shot_on == "roulette":
 						Game.debug_capture(0.3)
+
+
+func _check_mines(car, before: float, now: float) -> void:
+	for m in _mines:
+		var lanes: Array[bool] = m.lanes
+		var i: int = car.index
+		if i >= lanes.size() or not lanes[i] or car == m.owner:
+			continue
+		if _crossed(before, now, m.s):
+			lanes[i] = false
+			if effects:
+				effects.burst(car.position, Color(1.0, 0.4, 0.15))
+			mine_hit.emit(car, m.owner)
 
 
 func _spinning(car) -> bool:
@@ -124,14 +150,23 @@ func _roll(place: int, n: int) -> String:
 	if Game.debug_item != "":
 		return Game.debug_item
 	var behind := float(place - 1) / maxf(n - 1, 1)
-	var w_rocket := lerpf(0.25, 0.55, behind) if n > 1 else 0.0
-	var w_shield := lerpf(0.28, 0.1, behind)
-	var w_mega := lerpf(0.35, 0.33, behind)
-	var r := randf() * (w_rocket + w_shield + w_mega)
-	if r < w_rocket:
-		return "rocket"
-	if r < w_rocket + w_shield:
-		return "shield"
+	var solo := n <= 1
+	var weights := {
+		"rocket": 0.0 if solo else lerpf(0.22, 0.4, behind),
+		"shield": lerpf(0.25, 0.08, behind),
+		"mega": lerpf(0.25, 0.22, behind),
+		"lightning": 0.0 if solo or place == 1 else lerpf(0.0, 0.16, behind),
+		"mine": 0.0 if solo or place == n else lerpf(0.26, 0.06, behind),
+		"triple": 0.0 if solo else lerpf(0.02, 0.1, behind),
+	}
+	var total := 0.0
+	for w in weights.values():
+		total += w
+	var r := randf() * total
+	for item in weights:
+		r -= weights[item]
+		if r < 0.0:
+			return item
 	return "mega"
 
 
@@ -162,6 +197,23 @@ func fire_rocket(shooter):
 	_rockets.append({"s": shooter.progress + 20.0, "lane": shooter.lane_offset, "shooter": shooter,
 		"target": target, "t": 0.0, "dir": signf(target.progress - shooter.progress), "puff": 0.0})
 	return target
+
+
+## Drops a row of mines behind `owner`: one in every lane but its own.
+func drop_mines(owner) -> void:
+	var lanes: Array[bool] = []
+	for i in track.lane_offsets.size():
+		lanes.append(i != owner.index)
+	_mines.append({"s": owner.progress - 90.0, "lanes": lanes, "owner": owner, "t": 0.0})
+
+
+## Cars ahead of `shooter` (for lightning).
+func cars_ahead(shooter) -> Array:
+	var out := []
+	for c in cars:
+		if c != shooter and c.state == Car.State.RACING and c.progress > shooter.progress:
+			out.append(c)
+	return out
 
 
 func is_targeted(car) -> bool:
@@ -208,6 +260,12 @@ func _rocket_dir(r: Dictionary) -> Vector2:
 # --- Drawing --------------------------------------------------------------------
 
 func _draw() -> void:
+	for m in _mines:
+		var lanes: Array[bool] = m.lanes
+		var fade := clampf((MINE_LIFE - m.t) / 1.0, 0.0, 1.0)
+		for i in lanes.size():
+			if lanes[i]:
+				_draw_mine(track.point_at(m.s, track.lane_offsets[i]), m.t + i, fade)
 	for spot in _spots:
 		var boxes: Array[float] = spot.boxes
 		for i in boxes.size():
@@ -233,6 +291,17 @@ func _draw_box(p: Vector2, phase: float) -> void:
 	draw_set_transform(p + Vector2(0, bob).rotated(up), up)
 	draw_string(ThemeDB.fallback_font, Vector2(-10, 8), "?", HORIZONTAL_ALIGNMENT_CENTER, 20, 22, OUTLINE)
 	draw_set_transform(Vector2.ZERO)
+
+
+func _draw_mine(p: Vector2, t: float, alpha: float) -> void:
+	draw_circle(p + Vector2(3, 4), 11.0, Color(0, 0, 0, 0.3 * alpha))
+	for k in 8:
+		var d := Vector2.from_angle(k * TAU / 8.0)
+		draw_line(p + d * 8.0, p + d * 13.0, Color(OUTLINE, alpha), 4.0)
+	draw_circle(p, 10.5, Color(OUTLINE, alpha))
+	draw_circle(p, 8.5, Color(0.25, 0.25, 0.3, alpha))
+	var blink := int(t * 4.0) % 2 == 0
+	draw_circle(p, 3.5, Color(1.0, 0.15, 0.1, alpha) if blink else Color(0.45, 0.08, 0.06, alpha))
 
 
 func _draw_rocket(r: Dictionary) -> void:
@@ -287,6 +356,23 @@ static func draw_item_icon(ci: CanvasItem, item: String, k: float) -> void:
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(-7, -2) * k, Vector2(-11, 0) * k, Vector2(-7, 2) * k]), Color(1.0, 0.6, 0.1))
 		"mega":
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(1, -9) * k, Vector2(-5, 1) * k, Vector2(0, 1) * k, Vector2(-2, 9) * k, Vector2(5, -2) * k, Vector2(0, -2) * k]), Color(0.2, 0.7, 1.0))
+		"lightning":
+			var bolt := PackedVector2Array([Vector2(2, -10) * k, Vector2(-6, 1) * k, Vector2(-1, 1) * k, Vector2(-3, 10) * k, Vector2(6, -2) * k, Vector2(1, -2) * k])
+			ci.draw_colored_polygon(bolt, Color(1.0, 0.85, 0.1))
+			var loop := bolt.duplicate()
+			loop.append(bolt[0])
+			ci.draw_polyline(loop, Color(0.55, 0.35, 0.0), 1.5 * k, true)
+		"mine":
+			for i in 8:
+				var d := Vector2.from_angle(i * TAU / 8.0)
+				ci.draw_line(d * 5.0 * k, d * 9.0 * k, OUTLINE, 2.5 * k)
+			ci.draw_circle(Vector2.ZERO, 6.5 * k, Color(0.25, 0.25, 0.3))
+			ci.draw_circle(Vector2.ZERO, 2.5 * k, Color(1.0, 0.15, 0.1))
+		"triple":
+			for j in 3:
+				var o := Vector2(-2.0 + j * 2.0, -6.0 + j * 6.0) * k
+				ci.draw_rect(Rect2(o + Vector2(-6, -1.5) * k, Vector2(8, 3) * k), Color(0.35, 0.35, 0.4))
+				ci.draw_colored_polygon(PackedVector2Array([o + Vector2(2, -2) * k, o + Vector2(6, 0) * k, o + Vector2(2, 2) * k]), Color(1.0, 0.3, 0.2))
 
 
 func _draw_glow(ci: CanvasItem) -> void:
@@ -298,6 +384,13 @@ func _draw_glow(ci: CanvasItem) -> void:
 			var off: float = track.lane_offsets[i] if i < track.lane_offsets.size() else 0.0
 			var p: Vector2 = track.point_at(spot.s, off)
 			ci.draw_texture_rect(Car.glow_texture(), Rect2(p - Vector2(28, 28), Vector2(56, 56)), false, Color(1, 1, 1, 0.4))
+	for m in _mines:
+		var lanes: Array[bool] = m.lanes
+		if int((m.t) * 4.0) % 2 == 0:
+			for i in lanes.size():
+				if lanes[i]:
+					var q: Vector2 = track.point_at(m.s, track.lane_offsets[i])
+					ci.draw_texture_rect(Car.glow_texture(), Rect2(q - Vector2(16, 16), Vector2(32, 32)), false, Color(1.0, 0.2, 0.1, 0.6))
 	for r in _rockets:
 		# Exhaust flame behind the rocket.
 		var p := _rocket_pos(r)

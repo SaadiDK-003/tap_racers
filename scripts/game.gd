@@ -68,7 +68,7 @@ var debug_map := -1
 var debug_bots := false
 var debug_reckless := false # bots never brake (tests crashes)
 var debug_log := false # print lap times and results
-var debug_item := "" # --items=rocket (or shield / mega): every box gives that item
+var debug_item := "" # --items=rocket (shield, mega, lightning, mine, triple): every box gives that item
 var debug_perf := false # print render stats (draw calls, primitives, fps)
 var debug_autopilot := false # P1 is driven by the bot but counts as a human (tests saving)
 var debug_podium := false # jump straight to a sample championship podium
@@ -335,7 +335,7 @@ func _parse_debug_args() -> void:
 			"weather": weather_mode = maxi(0, WEATHER_MODES.find(value.to_upper()))
 			"items":
 				items_on = value != "off"
-				debug_item = value if value in ["rocket", "shield", "mega"] else ""
+				debug_item = value if value in ["rocket", "shield", "mega", "lightning", "mine", "triple"] else ""
 			"podium": debug_podium = true
 			"scene": debug_scene = value
 			"coins": debug_coins = value.to_int()

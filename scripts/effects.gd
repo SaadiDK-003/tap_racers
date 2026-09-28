@@ -14,6 +14,7 @@ var skid_layer: Node2D # set by the owner; placed between the track and the cars
 var _puffs: Array[Dictionary] = []
 var _sparks: Array[Dictionary] = []
 var _waves: Array[Dictionary] = []
+var _bolts: Array[Dictionary] = [] # lightning strikes {car, t, seed}
 var _skids := PackedVector2Array()
 var _glow_layer: Node2D
 var _font: FontVariation
@@ -51,6 +52,13 @@ func burst(p: Vector2, car_color: Color) -> void:
 	for i in 22:
 		var c := Color(1.0, 0.75, 0.3) if i % 3 != 0 else car_color
 		_sparks.append({"p": p, "v": Vector2.from_angle(randf() * TAU) * randf_range(160, 420), "t": 0.0, "life": randf_range(0.3, 0.6), "c": c})
+
+
+## A lightning bolt striking down onto a car.
+func bolt(car) -> void:
+	_bolts.append({"car": car, "t": 0.0, "seed": randi()})
+	for i in 10:
+		_sparks.append({"p": car.position, "v": Vector2.from_angle(randf() * TAU) * randf_range(120, 260), "t": 0.0, "life": randf_range(0.2, 0.4), "c": Color(1.0, 0.95, 0.5)})
 
 
 ## Winner moment: a spotlight follows the car and fireworks burst around it.
@@ -113,6 +121,9 @@ func _process(delta: float) -> void:
 		s.p += s.v * delta
 		s.v *= 0.9
 	_sparks = _sparks.filter(func(s): return s.t < s.life)
+	for b in _bolts:
+		b.t += delta
+	_bolts = _bolts.filter(func(b): return b.t < 0.4)
 	for w in _waves:
 		w.t += delta
 	_waves = _waves.filter(func(w): return w.t < 0.45)
@@ -213,6 +224,22 @@ func _draw_additive(ci: CanvasItem) -> void:
 	if _crown_visible():
 		var p := _crown_pos()
 		ci.draw_texture_rect(Car.glow_texture(), Rect2(p - Vector2(30, 30), Vector2(60, 60)), false, Color(1.0, 0.75, 0.2, 0.4 * _crown_alpha()))
+	var sky: float = -(get_parent() as Node2D).rotation
+	for b in _bolts:
+		# Jagged bolt from off-screen "above" down to the car, flickering.
+		var target: Vector2 = b.car.position
+		var start: Vector2 = target + Vector2(0, -260).rotated(sky)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = b.seed + int(b.t * 30.0)
+		var pts := PackedVector2Array([start])
+		for k in range(1, 7):
+			var f := k / 7.0
+			pts.append(start.lerp(target, f) + Vector2(rng.randf_range(-18, 18), 0).rotated(sky))
+		pts.append(target)
+		var a: float = 1.0 - b.t / 0.4
+		ci.draw_polyline(pts, Color(1.0, 0.9, 0.3, 0.5 * a), 12.0, true)
+		ci.draw_polyline(pts, Color(1.0, 1.0, 0.85, a), 4.0, true)
+		ci.draw_texture_rect(Car.glow_texture(), Rect2(target - Vector2(40, 40), Vector2(80, 80)), false, Color(1.0, 0.9, 0.4, 0.6 * a))
 	for w in _waves:
 		var k: float = w.t / 0.45
 		ci.draw_arc(w.p, 20.0 + 110.0 * k, 0.0, TAU, 48, Color(w.c, 0.9 * (1.0 - k)), 8.0 * (1.0 - k) + 2.0, true)
