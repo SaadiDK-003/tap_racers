@@ -253,7 +253,8 @@ func _start_race() -> void:
 	_pop(_lights, 1.2)
 	Sfx.play(Sfx.go, -1.0)
 	Sfx.play(Sfx.cheer, -6.0)
-	Sfx.play_music("race")
+	Sfx.set_music_pitch(1.0)
+	Sfx.play_music("race%d" % (maxi(Game.current_map, 0) % Sfx.RACE_THEMES.size()))
 	_flash("GO!", 0.5, Color(0.3, 1.0, 0.5))
 	_sub_label.text = ""
 	if coach:
@@ -273,6 +274,12 @@ func _check_laps() -> void:
 			if Game.debug_bots or Game.debug_log:
 				print("P%d lap %d at %.2fs (crashes %d, fps %d)" % [i + 1, done, race_time, car.crashes, Engine.get_frames_per_second()])
 			_on_lap_done(car, done)
+			if done == Game.race_laps() - 1 and not _final_lap_called and Game.race_laps() > 1 and not trial:
+				_final_lap_called = true
+				_flash("FINAL LAP!", 0.9, Color(1.0, 0.85, 0.2))
+				_music_pitch = 1.08
+				Sfx.set_music_pitch(_music_pitch)
+				Sfx.play(Sfx.cheer, -3.0)
 			if car.state == Car.State.RACING and done < Game.race_laps():
 				if done == Game.race_laps() - 1:
 					pads.toast(i, "FINAL LAP!", Color(1.0, 0.85, 0.2))
@@ -343,6 +350,7 @@ func _call_overtakes(places: Array[int]) -> void:
 		_last_callout[i] = race_time
 		if place == 1:
 			pads.toast(i, "TOOK THE LEAD!", Color(1.0, 0.85, 0.2))
+			_crowd()
 			_cpu_says(car, "lead", 0.7)
 		else:
 			pads.toast(i, "OVERTAKE!", Color(0.5, 1.0, 0.6))
@@ -422,7 +430,7 @@ func _end_photo_finish() -> void:
 		return
 	_photo = false
 	Engine.time_scale = 1.0
-	Sfx.set_music_pitch(1.0)
+	Sfx.set_music_pitch(_music_pitch)
 	_announce_winner(_photo_winner)
 
 
@@ -487,6 +495,7 @@ func _on_mine_hit(target, owner) -> void:
 	world.shake = maxf(world.shake, 0.3)
 	if target.rocket_hit():
 		_cpu_says(target, "hit", 0.8)
+		_crowd(true)
 		pads.toast(target.index, "MINE!", Color(1.0, 0.45, 0.2), "dropped by " + _short_name(owner.index))
 		pads.toast(owner.index, "MINE HIT!", Color(1.0, 0.85, 0.2), _short_name(target.index) + " went boom")
 		_rocket_hits[owner.index] += 1
@@ -501,6 +510,7 @@ func _on_rocket_hit(target, shooter) -> void:
 	world.shake = maxf(world.shake, 0.3)
 	if target.rocket_hit():
 		_cpu_says(target, "hit", 0.8)
+		_crowd(true)
 		pads.toast(target.index, "BOOM!", Color(1.0, 0.45, 0.2), "hit by " + _short_name(shooter.index))
 		pads.toast(shooter.index, "DIRECT HIT!", Color(1.0, 0.85, 0.2))
 		_rocket_hits[shooter.index] += 1
@@ -520,6 +530,20 @@ func _on_shield_used(car) -> void:
 
 
 var _last_said := -10.0
+var _music_pitch := 1.0
+var _final_lap_called := false
+var _last_roar := -10.0
+
+
+## Crowd reaction from the grandstand; `ooh` is the low "ooooh" for big knockouts.
+func _crowd(ooh := false) -> void:
+	if race_time - _last_roar < 1.5:
+		return
+	_last_roar = race_time
+	if ooh:
+		Sfx.play(Sfx.cheer, -7.0, 0.72)
+	else:
+		Sfx.play(Sfx.cheer, -6.0, randf_range(1.0, 1.1))
 var _said_at: Array[float] = [-10.0, -10.0, -10.0, -10.0]
 
 

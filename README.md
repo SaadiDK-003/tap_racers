@@ -59,7 +59,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 - **CLOSE CALL!:** slide right to the edge of a crash and save it to earn bonus nitro.
 - **PERFECT LAP!:** a lap with no crash and no slides earns bonus nitro. This one is for humans only.
 - **Photo finish:** if the runner-up is less than about a third of a second behind the winner, the game switches to slow motion with a camera flash and "PHOTO FINISH!", then shows the winning margin.
-- **Music and crowd:** an upbeat race track and a calm menu tune. The crowd cheers at the start, as cars cross the line, and at the finish. SOUND and MUSIC can each be toggled in the menu.
+- **Music and crowd:** three race themes (each track uses one) and a calm menu tune. On the final lap the music speeds up and the crowd roars. The crowd also cheers lead changes and "ooohs" at big knockouts. The crowd cheers at the start, as cars cross the line, and at the finish. SOUND and MUSIC can each be toggled in the menu.
 
 ## How to play
 - **Hold** your button to accelerate and **let go** to brake.
