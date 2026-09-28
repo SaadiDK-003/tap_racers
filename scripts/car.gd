@@ -278,14 +278,6 @@ func add_nitro(amount: float) -> void:
 		nitro_ready.emit(self)
 
 
-## Boost pad: an instant speed kick (safe for a moment, so it can't throw you off).
-func boost_pad() -> void:
-	if state != State.RACING:
-		return
-	speed = minf(BOOST_SPEED, maxf(speed, TOP_SPEED * 0.8) + 260.0)
-	_grace = maxf(_grace, 0.5)
-
-
 ## False during nitro and its short grace period.
 func can_crash() -> bool:
 	return not boosting and _grace <= 0.0

@@ -7,13 +7,11 @@ const Car = preload("res://scripts/car.gd")
 const Effects = preload("res://scripts/effects.gd")
 const DrawLayer = preload("res://scripts/draw_layer.gd")
 const Powerups = preload("res://scripts/powerups.gd")
-const BoostPads = preload("res://scripts/boost_pads.gd")
 
 var map
 var track: Track
 var effects: Effects
 var powerups: Powerups # null when items are off
-var boost_pads: BoostPads
 var weather := "clear" # clear, rain or night
 var cars: Array = []
 var shake := 0.0 # seconds of screen shake left
@@ -74,19 +72,6 @@ func build(map_def, num_cars: int) -> void:
 var _weather_layer: Node2D
 var _lights_layer: Node2D
 var _powerup_slot: Node2D
-
-
-## Boost pads on the straights; call after enable_powerups() so they avoid the boxes.
-func enable_boost_pads() -> void:
-	var avoid: Array[float] = []
-	if powerups:
-		for spot in powerups._spots:
-			avoid.append(spot.s)
-	boost_pads = BoostPads.new()
-	_powerup_slot.add_child(boost_pads)
-	_powerup_slot.move_child(boost_pads, 0) # under the boxes
-	boost_pads.setup(track, avoid)
-	boost_pads.cars = cars
 
 
 func enable_powerups() -> void:

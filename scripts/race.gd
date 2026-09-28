@@ -10,7 +10,6 @@ const Confetti = preload("res://scripts/confetti.gd")
 const RainLayer = preload("res://scripts/rain_layer.gd")
 const TutorialCoach = preload("res://scripts/tutorial_coach.gd")
 const TimeTrial = preload("res://scripts/time_trial.gd")
-const BoostPadsScript = preload("res://scripts/boost_pads.gd")
 
 enum Phase { COUNTDOWN, RACING, RESULTS }
 
@@ -72,10 +71,6 @@ func _ready() -> void:
 		world.powerups.effects = world.effects
 		world.powerups.picked.connect(_on_pickup)
 		world.powerups.rocket_hit.connect(_on_rocket_hit)
-	world.enable_boost_pads()
-	world.boost_pads.boosted.connect(_on_boost_pad)
-	if Game.debug_log:
-		print("PADS %s %s" % [world.map.title, str(world.boost_pads.pads)])
 	var weather := Game.pick_weather()
 	_weather = weather
 	world.set_weather(weather)
@@ -182,8 +177,6 @@ func _process(delta: float) -> void:
 	_call_overtakes(places)
 	if world.powerups and phase == Phase.RACING:
 		world.powerups.update_cars(places)
-	if phase == Phase.RACING:
-		world.boost_pads.update_cars()
 	if phase == Phase.RACING:
 		if coach:
 			coach.update(delta)
@@ -454,11 +447,6 @@ func _on_pickup(car, item: String) -> void:
 			car.add_nitro(1.0)
 			car.mega = true
 			pads.toast(i, "MEGA NITRO!", Car.NITRO_COLOR, "" if Game.is_cpu(i) else "DOUBLE-TAP!")
-
-
-func _on_boost_pad(car) -> void:
-	Sfx.play(Sfx.boost, -9.0, 1.3)
-	world.effects.shockwave(car.position, BoostPadsScript.COLOR)
 
 
 func _on_rocket_hit(target, shooter) -> void:
