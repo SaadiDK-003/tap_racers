@@ -107,19 +107,27 @@ func _ready() -> void:
 
 
 var _perf_t := 0.0
+var _perf_worst := 0.0 # longest frame in the last second (hitches)
 
 
 func _process(delta: float) -> void:
 	if not debug_perf:
 		return
 	_perf_t += delta
+	_perf_worst = maxf(_perf_worst, delta)
+	if delta > 0.025:
+		print("HITCH %.1f ms at %.2fs (process %.1f ms, draw calls %d, video mem %d MB)" % [delta * 1000.0, Time.get_ticks_msec() / 1000.0,
+			Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_VIDEO_MEM_USED) / 1048576])
 	if _perf_t > 1.0:
 		_perf_t = 0.0
-		print("PERF fps %d  draw calls %d  primitives %d  frame %.1f ms" % [
-			Engine.get_frames_per_second(),
+		print("PERF fps %d  worst frame %.1f ms  draw calls %d  primitives %d  process %.1f ms" % [
+			Engine.get_frames_per_second(), _perf_worst * 1000.0,
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 			RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
 			Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0])
+		_perf_worst = 0.0
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -240,6 +248,33 @@ func _apply_insets(c: Control, sign: float) -> void:
 	c.offset_bottom = -i.w
 
 
+var vibration := true # player setting
+
+
+var _buzz_until := 0 # msec: when the current vibration ends
+var _buzz_strength := 0.0
+
+
+## Vibrates the phone (touch devices only). A weaker buzz never cuts into a
+## stronger one that is still running, so pile-ups don't spam the vibrator
+## (each call is a trip into Android, which could cost frames).
+func buzz(ms: int, strength := 1.0) -> void:
+	if not vibration or not is_touch() or debug_bots:
+		return
+	var now := Time.get_ticks_msec()
+	if now < _buzz_until and strength <= _buzz_strength:
+		return
+	_buzz_until = now + ms
+	_buzz_strength = strength
+	Input.vibrate_handheld(ms, clampf(strength, 0.05, 1.0))
+
+
+## Buzz only when `i` is a human player (CPU events never vibrate).
+func buzz_for(i: int, ms: int, strength := 1.0) -> void:
+	if not is_cpu(i):
+		buzz(ms, strength)
+
+
 var _touch_seen := false
 
 
@@ -271,13 +306,14 @@ func load_settings() -> void:
 	items_on = bool(Profile.setting("items", items_on))
 	weather_mode = int(Profile.setting("weather", weather_mode))
 	Sfx.enabled = bool(Profile.setting("sound", true))
+	vibration = bool(Profile.setting("vibration", true))
 	Sfx.set_music_enabled(bool(Profile.setting("music", true)))
 
 
 func save_settings() -> void:
 	if is_career() or debug_bots or debug_log or debug_shot != "" or OS.get_cmdline_user_args().size() > 0:
 		return # test runs must not overwrite the player's settings
-	for pair in [["players", num_players], ["cpus", num_cpus], ["cpu_level", cpu_level], ["races", races], ["laps", laps], ["items", items_on], ["weather", weather_mode], ["sound", Sfx.enabled], ["music", Sfx.music_enabled]]:
+	for pair in [["players", num_players], ["cpus", num_cpus], ["cpu_level", cpu_level], ["races", races], ["laps", laps], ["items", items_on], ["weather", weather_mode], ["sound", Sfx.enabled], ["music", Sfx.music_enabled], ["vibration", vibration]]:
 		Profile.data.settings[pair[0]] = pair[1]
 	Profile.save()
 

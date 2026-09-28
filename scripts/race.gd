@@ -306,6 +306,7 @@ func _end_intro() -> void:
 
 func _start_race() -> void:
 	phase = Phase.RACING
+	Game.buzz(40, 0.5) # GO!
 	for car in cars:
 		car.state = Car.State.RACING
 	world.effects.show_tags = false
@@ -396,6 +397,7 @@ func _announce_winner(car) -> void:
 		Game.debug_capture(1.0)
 	Sfx.play(Sfx.fanfare)
 	_confetti.burst([car.color, Color.WHITE, Color(1.0, 0.85, 0.2)], 90)
+	Game.buzz_for(i, 260, 0.8)
 
 
 # --- Commentary ---------------------------------------------------------------
@@ -511,6 +513,7 @@ func _on_pickup(car, item: String) -> void:
 	if coach:
 		coach.on_pickup()
 	Sfx.play(Sfx.pickup, -4.0)
+	Game.buzz_for(i, 20, 0.3)
 	if Game.debug_log:
 		print("ITEM %.1f %s %s" % [race_time, _short_name(i), item])
 	if Game.debug_shot_on == item and race_time > 3.0:
@@ -541,6 +544,7 @@ func _on_pickup(car, item: String) -> void:
 					zapped += 1
 					_cpu_says(c, "hit", 0.5)
 					pads.toast(c.index, "ZAPPED!", Color(1.0, 0.9, 0.3), "by " + _short_name(i))
+					Game.buzz_for(c.index, 90, 0.7)
 			pads.toast(i, "LIGHTNING!", Color(1.0, 0.9, 0.3), "zapped %d car%s" % [zapped, "" if zapped == 1 else "s"])
 			_flash_rect.color = Color(1, 1, 0.85, 0.35)
 			create_tween().tween_property(_flash_rect, "color:a", 0.0, 0.3)
@@ -554,11 +558,14 @@ func _on_pickup(car, item: String) -> void:
 
 
 func _on_mine_hit(target, owner) -> void:
+	if Game.debug_perf:
+		print("MINEHIT at %.2fs" % (Time.get_ticks_msec() / 1000.0))
 	Sfx.play(Sfx.crash, -2.0, 0.9)
 	world.shake = maxf(world.shake, 0.3)
 	if target.rocket_hit():
 		_cpu_says(target, "hit", 0.8)
 		_crowd(true)
+		Game.buzz_for(target.index, 150, 1.0)
 		pads.toast(target.index, "MINE!", Color(1.0, 0.45, 0.2), "dropped by " + _short_name(owner.index))
 		pads.toast(owner.index, "MINE HIT!", Color(1.0, 0.85, 0.2), _short_name(target.index) + " went boom")
 		_rocket_hits[owner.index] += 1
@@ -567,6 +574,8 @@ func _on_mine_hit(target, owner) -> void:
 
 
 func _on_rocket_hit(target, shooter) -> void:
+	if Game.debug_perf:
+		print("ROCKETHIT at %.2fs" % (Time.get_ticks_msec() / 1000.0))
 	if Game.debug_log or Game.debug_bots:
 		print("ROCKET %s -> %s  shield=%s" % [_short_name(shooter.index), _short_name(target.index), target.shield])
 	Sfx.play(Sfx.crash, -2.0, 0.8)
@@ -574,6 +583,7 @@ func _on_rocket_hit(target, shooter) -> void:
 	if target.rocket_hit():
 		_cpu_says(target, "hit", 0.8)
 		_crowd(true)
+		Game.buzz_for(target.index, 150, 1.0)
 		pads.toast(target.index, "BOOM!", Color(1.0, 0.45, 0.2), "hit by " + _short_name(shooter.index))
 		pads.toast(shooter.index, "DIRECT HIT!", Color(1.0, 0.85, 0.2))
 		_rocket_hits[shooter.index] += 1
@@ -643,6 +653,7 @@ func _on_landed(car) -> void:
 	Sfx.play(Sfx.crash, -16.0, 1.9)
 	world.effects.land_dust(car.position)
 	world.shake = maxf(world.shake, 0.06)
+	Game.buzz_for(car.index, 45, 0.55)
 
 
 func _on_splashed(car) -> void:
@@ -656,19 +667,19 @@ func _on_splashed(car) -> void:
 	pads.toast(car.index, "SPLASH!", Color(0.45, 0.8, 1.0), "too slow for the jump")
 	_crowd(true)
 	_cpu_says(car, "splash", 0.8)
-	if Game.is_touch():
-		Input.vibrate_handheld(90)
+	Game.buzz_for(car.index, 180, 1.0)
 
 
 func _on_crash(car) -> void:
+	if Game.debug_perf:
+		print("CRASH at %.2fs" % (Time.get_ticks_msec() / 1000.0))
 	_cpu_says(car, "crash", 0.5)
 	if coach:
 		coach.on_crash()
 	world.shake = 0.28
 	pads.toast(car.index, "CRASH!", Color(1.0, 0.35, 0.3))
 	Sfx.play(Sfx.crash, -3.0, randf_range(0.9, 1.1))
-	if Game.is_touch():
-		Input.vibrate_handheld(120)
+	Game.buzz_for(car.index, 130, 1.0)
 
 
 func _on_boost(car) -> void:
@@ -681,11 +692,13 @@ func _on_boost(car) -> void:
 	pads.toast(car.index, "NITRO!", Car.NITRO_COLOR)
 	world.effects.shockwave(car.position, Car.NITRO_COLOR)
 	world.shake = maxf(world.shake, 0.12)
+	Game.buzz_for(car.index, 60, 0.6)
 
 
 func _on_nitro_ready(car) -> void:
 	pads.toast(car.index, "NITRO READY!", Car.NITRO_COLOR, "" if Game.is_cpu(car.index) else "DOUBLE-TAP!")
 	Sfx.play(Sfx.lap, -8.0, 1.5)
+	Game.buzz_for(car.index, 25, 0.35) # light tap: nitro is ready
 
 
 func _laps_done(car) -> int:

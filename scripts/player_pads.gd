@@ -228,7 +228,7 @@ func _input(event: InputEvent) -> void:
 				pause_pressed.emit()
 				return
 			_touches[event.index] = _nearest_player(pos)
-			Input.vibrate_handheld(15) # a small tick so players feel the press
+			Game.buzz(15, 0.3) # a small tick so players feel the press
 		else:
 			_touches.erase(event.index)
 		_refresh()

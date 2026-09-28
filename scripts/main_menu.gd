@@ -13,6 +13,7 @@ var _level_buttons: Array[Button] = []
 var _demo: RaceWorld
 var _sound_button: Button
 var _music_button: Button
+var _vibe_button: Button
 var _landscape := false
 var _play_button: Button
 var _summary: Label
@@ -269,6 +270,9 @@ func _build_settings() -> void:
 	_music_button = _menu_button("", _toggle_music, Vector2(380, 70))
 	content.add_child(_center_wrap(_sound_button))
 	content.add_child(_center_wrap(_music_button))
+	if Game.is_touch():
+		_vibe_button = _menu_button("", _toggle_vibration, Vector2(380, 70))
+		content.add_child(_center_wrap(_vibe_button))
 	if not OS.has_feature("mobile"):
 		content.add_child(_center_wrap(_menu_button("FULLSCREEN", Game.toggle_fullscreen, Vector2(380, 70))))
 	content.add_child(_center_wrap(_menu_button("CLOSE", func(): _show(_settings, false), Vector2(380, 62))))
@@ -492,7 +496,16 @@ func _toggle_music() -> void:
 	_update_sound_button()
 
 
+func _toggle_vibration() -> void:
+	Game.vibration = not Game.vibration
+	Game.save_settings()
+	_update_sound_button()
+	Game.buzz(60, 0.7)
+
+
 func _update_sound_button() -> void:
+	if _vibe_button:
+		_vibe_button.text = "VIBRATION: ON" if Game.vibration else "VIBRATION: OFF"
 	if _sound_button:
 		_sound_button.text = "SOUND: ON" if Sfx.enabled else "SOUND: OFF"
 	if _music_button:
