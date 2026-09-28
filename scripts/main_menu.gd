@@ -64,8 +64,11 @@ func _ready() -> void:
 	var badge := CoinBadge.new()
 	add_child(badge)
 	badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	badge.position = Vector2(get_viewport_rect().size.x - 190, 16)
-	get_viewport().size_changed.connect(func(): badge.position = Vector2(get_viewport_rect().size.x - 190, 16))
+	var place_badge := func():
+		var sr := Game.safe_rect()
+		badge.position = Vector2(sr.end.x - 190, sr.position.y + 16)
+	place_badge.call()
+	get_viewport().size_changed.connect(place_badge)
 	_play_button.grab_focus()
 	get_viewport().size_changed.connect(_on_resized)
 	if not Profile.data.tutorial_done and not bool(Profile.setting("tutorial_offered", false)) and not Game.debug_skip_menu:
@@ -80,6 +83,7 @@ func _build_home() -> void:
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
+	Game.fit_to_safe(center)
 	var main: BoxContainer = HBoxContainer.new() if _landscape else VBoxContainer.new()
 	main.add_theme_constant_override("separation", 60 if _landscape else 26)
 	center.add_child(main)
@@ -137,7 +141,8 @@ func _build_home() -> void:
 	# Settings gear in the top-left corner (the coin counter sits top-right).
 	var gear := Button.new()
 	gear.custom_minimum_size = Vector2(60, 60)
-	gear.position = Vector2(16, 16)
+	var sr := Game.safe_rect()
+	gear.position = sr.position + Vector2(16, 16)
 	gear.focus_mode = Control.FOCUS_NONE
 	gear.add_theme_stylebox_override("normal", Game.make_style(Color(0.08, 0.09, 0.13, 0.9), 30, Color(0.02, 0.03, 0.05), 4))
 	gear.add_theme_stylebox_override("hover", Game.make_style(Color(0.16, 0.18, 0.24, 0.95), 30, Color(0.02, 0.03, 0.05), 4))
@@ -237,6 +242,7 @@ func _panel_overlay() -> VBoxContainer:
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
+	Game.fit_to_safe(center)
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", Game.make_style(Color(0.07, 0.08, 0.12, 0.97), 26, Color(0.02, 0.03, 0.05), 5))
 	center.add_child(panel)
@@ -359,6 +365,7 @@ func _offer_tutorial() -> void:
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
+	Game.fit_to_safe(center)
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", Game.make_style(Color(0.08, 0.09, 0.13), 26, Game.ACCENT, 5))
 	center.add_child(panel)

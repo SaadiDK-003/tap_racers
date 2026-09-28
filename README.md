@@ -54,6 +54,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 
 ## Phones
 - **Pads:** on phones they're plain coloured buttons (no key letters), thumb-sized, set in from the screen edges clear of Android's edge-gesture zones, and give a small vibration on every press. With a keyboard they're 30% smaller and show each player's key, so the track gets more of the screen. `--touch` previews the phone layout on desktop.
+- **Safe areas:** on phones, every screen keeps buttons and text clear of the notch or camera hole, rounded corners and the gesture bar. Backgrounds, the track and overlays still fill the whole screen. `--safe=left,top,right,bottom` fakes cutouts on desktop for testing.
 - **Performance:** the static parts of each track (ground, road, curbs, scenery, bridge deck) and each car's look are drawn once into images. That cut the work per frame by about 85%. `--perf` prints live render stats.
 
 ## Tutorial, time trial and awards

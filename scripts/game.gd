@@ -173,6 +173,57 @@ func _make_key_label(i: int) -> String:
 	return OS.get_keycode_string(mapped if mapped != KEY_NONE else key)
 
 
+var debug_safe := Vector4.ZERO # --safe=left,top,right,bottom: fake a phone's cutouts
+
+## Phone screen insets (left, top, right, bottom) in viewport units: the notch or
+## camera hole, rounded corners and the gesture bar. Zero on desktop and web.
+func safe_insets() -> Vector4:
+	if debug_safe != Vector4.ZERO:
+		return debug_safe
+	if not OS.has_feature("mobile"):
+		return Vector4.ZERO
+	var win := Vector2(DisplayServer.window_get_size())
+	var safe := DisplayServer.get_display_safe_area()
+	if win.x <= 0.0 or safe.size.x <= 0:
+		return Vector4.ZERO
+	var k := get_tree().root.get_visible_rect().size / win
+	return Vector4(
+		maxf(0.0, safe.position.x * k.x), maxf(0.0, safe.position.y * k.y),
+		maxf(0.0, (win.x - safe.end.x) * k.x), maxf(0.0, (win.y - safe.end.y) * k.y))
+
+
+## The part of the screen clear of cutouts, in viewport units.
+func safe_rect() -> Rect2:
+	var vp := get_tree().root.get_visible_rect()
+	var i := safe_insets()
+	return Rect2(vp.position + Vector2(i.x, i.y), vp.size - Vector2(i.x + i.z, i.y + i.w))
+
+
+## Keeps a full-screen control inside the safe area (and updates on resize/rotate).
+func fit_to_safe(c: Control) -> void:
+	_apply_insets(c, 1.0)
+	get_tree().root.size_changed.connect(func():
+		if is_instance_valid(c):
+			_apply_insets(c, 1.0))
+
+
+## For a background inside a safe-area control: stretch it back out to the edges.
+func bleed(c: Control) -> void:
+	_apply_insets(c, -1.0)
+	get_tree().root.size_changed.connect(func():
+		if is_instance_valid(c):
+			_apply_insets(c, -1.0))
+
+
+func _apply_insets(c: Control, sign: float) -> void:
+	var i := safe_insets() * sign
+	c.set_anchors_preset(Control.PRESET_FULL_RECT)
+	c.offset_left = i.x
+	c.offset_top = i.y
+	c.offset_right = -i.z
+	c.offset_bottom = -i.w
+
+
 var _touch_seen := false
 
 
@@ -358,6 +409,10 @@ func _parse_debug_args() -> void:
 			"tutorial": tutorial = true
 			"log": debug_log = true
 			"touch": _touch_seen = true # preview the phone layout on desktop
+			"safe":
+				var v := value.split(",")
+				if v.size() == 4:
+					debug_safe = Vector4(v[0].to_float(), v[1].to_float(), v[2].to_float(), v[3].to_float())
 			"perf": debug_perf = true
 			"autopilot": debug_autopilot = true
 			"weather": weather_mode = maxi(0, WEATHER_MODES.find(value.to_upper()))

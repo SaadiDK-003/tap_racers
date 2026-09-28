@@ -91,6 +91,7 @@ func _ready() -> void:
 
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	Game.fit_to_safe(center)
 	add_child(center)
 	var main: BoxContainer = HBoxContainer.new() if landscape else VBoxContainer.new()
 	main.add_theme_constant_override("separation", 50 if landscape else 18)

@@ -15,6 +15,7 @@ func _ready() -> void:
 
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	Game.fit_to_safe(center)
 	add_child(center)
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 14)

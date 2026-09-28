@@ -103,7 +103,9 @@ func _ready() -> void:
 	_sub_label.text = world.map.title.to_upper()
 	if weather == "rain":
 		_sub_label.text += "\nRAIN - SLIPPERY CORNERS!"
-		root_ui.add_child(RainLayer.new())
+		var rain := RainLayer.new()
+		root_ui.add_child(rain)
+		Game.bleed(rain)
 		root_ui.move_child(root_ui.get_child(root_ui.get_child_count() - 1), 0)
 		Sfx.play_ambient(Sfx.rain)
 	elif weather == "night":
@@ -132,13 +134,13 @@ func _exit_tree() -> void:
 
 
 func _fit_world() -> void:
-	var screen := get_viewport_rect().size
+	var sr := Game.safe_rect()
 	var band := PlayerPads.band_height()
-	var keepouts := PlayerPads.keepouts(screen, cars.size())
-	if screen.x > screen.y:
-		world.fit(Rect2(band, 12.0, screen.x - band * 2.0, screen.y - 24.0), 1.6, keepouts)
+	var keepouts := PlayerPads.keepouts(sr, cars.size())
+	if sr.size.x > sr.size.y:
+		world.fit(Rect2(sr.position + Vector2(band, 12.0), sr.size - Vector2(band * 2.0, 24.0)), 1.6, keepouts)
 	else:
-		world.fit(Rect2(12.0, band, screen.x - 24.0, screen.y - band * 2.0), 1.6, keepouts)
+		world.fit(Rect2(sr.position + Vector2(12.0, band), sr.size - Vector2(24.0, band * 2.0)), 1.6, keepouts)
 
 
 func _process(delta: float) -> void:
@@ -633,6 +635,7 @@ func _build_ui() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.theme = Game.make_theme()
 	layer.add_child(root)
+	Game.fit_to_safe(root) # buttons and text stay clear of notches and camera holes
 	root_ui = root
 
 	pads = PlayerPads.new()
@@ -677,11 +680,12 @@ func _build_ui() -> void:
 
 	_confetti = Confetti.new()
 	root.add_child(_confetti)
+	Game.bleed(_confetti)
 	_flash_rect = ColorRect.new()
 	_flash_rect.color = Color(1, 1, 1, 0)
-	_flash_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_flash_rect)
+	Game.bleed(_flash_rect)
 
 
 func _make_label(font_size: int, outline: int, text := "") -> Label:
@@ -723,9 +727,10 @@ func _make_overlay(root: Control) -> Control:
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.visible = false
 	root.add_child(overlay)
+	Game.bleed(overlay) # dim the whole screen...
 	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
+	Game.fit_to_safe(center) # ...but keep the panel in the safe area
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", Game.make_style(Color(0.08, 0.09, 0.13, 0.97), 28, Color(0.02, 0.03, 0.05), 6))
 	center.add_child(panel)

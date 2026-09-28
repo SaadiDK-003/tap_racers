@@ -54,10 +54,11 @@ static func margin() -> float:
 ## Lap pill length. In portrait the two bottom pills meet the X button in the middle,
 ## so on narrow screens they're shortened to leave it room.
 static func pill_len_for(screen: Vector2) -> float:
-	if screen.x > screen.y:
-		return PILL_LEN
+	# The pills of two pads on the same side meet the X button in the middle of that
+	# side (bottom edge in portrait, left edge in landscape): shorten them to fit.
+	var side := screen.x if screen.x <= screen.y else screen.y
 	var edge := RADIUS + 14.0 + margin()
-	return clampf(screen.x * 0.5 - edge - RADIUS - CLOSE_R - 18.0, 100.0, PILL_LEN)
+	return clampf(side * 0.5 - edge - RADIUS - CLOSE_R - 28.0, 96.0, PILL_LEN)
 
 
 static func ui_scale() -> float:
@@ -77,7 +78,10 @@ var _scale := 0.0
 
 func _ready() -> void:
 	_fit()
-	get_viewport().size_changed.connect(_fit)
+	get_viewport().size_changed.connect(_fit.call_deferred)
+	var parent := get_parent() as Control
+	if parent:
+		parent.resized.connect(_fit)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_font = FontVariation.new()
 	_font.base_font = ThemeDB.fallback_font
@@ -142,9 +146,9 @@ static func pad_center(player: int, screen: Vector2) -> Vector2:
 
 ## Screen areas covered by the pads, pills and the X button, as [center, radius]
 ## circles. Scenery uses it to keep things like parking lots out from under the UI.
-static func keepouts(screen_px: Vector2, players: int) -> Array:
+static func keepouts(area: Rect2, players: int) -> Array:
 	var k := ui_scale()
-	var screen := screen_px / k
+	var screen := area.size / k
 	var out := []
 	var landscape := screen.x > screen.y
 	for i in players:
@@ -159,7 +163,7 @@ static func keepouts(screen_px: Vector2, players: int) -> Array:
 	var x_center := Vector2(margin() + RADIUS + 14.0, screen.y * 0.5) if landscape else Vector2(screen.x * 0.5, screen.y - margin() - RADIUS - 14.0)
 	out.append([x_center, CLOSE_R + 24.0])
 	for o in out:
-		o[0] = o[0] * k
+		o[0] = area.position + o[0] * k
 		o[1] = o[1] * k
 	return out
 
@@ -170,8 +174,11 @@ func _fit() -> void:
 	var changed := _scale != 0.0 and k != _scale
 	_scale = k
 	scale = Vector2(k, k)
+	# Fill the parent (the race UI, which is already inside the safe area).
+	var parent := get_parent() as Control
+	var area := parent.size if parent and parent.size.x > 0.0 else get_viewport_rect().size
 	position = Vector2.ZERO
-	size = get_viewport_rect().size / k
+	size = area / k
 	queue_redraw()
 	if changed:
 		layout_changed.emit()
@@ -209,7 +216,7 @@ func _input(event: InputEvent) -> void:
 	if ui_scale() != _scale:
 		_fit() # a first touch switched the layout to phone size
 	if event is InputEventScreenTouch:
-		var pos: Vector2 = event.position / _scale
+		var pos: Vector2 = get_global_transform().affine_inverse() * event.position
 		if event.pressed:
 			if _on_close(pos):
 				pause_pressed.emit()
@@ -223,7 +230,7 @@ func _input(event: InputEvent) -> void:
 		# Ignore mouse events that are only emulated copies of touches.
 		if event.device == InputEvent.DEVICE_ID_EMULATION:
 			return
-		var mpos: Vector2 = event.position / _scale
+		var mpos: Vector2 = get_global_transform().affine_inverse() * event.position
 		if event.pressed and _on_close(mpos):
 			pause_pressed.emit()
 			return
@@ -348,6 +355,8 @@ func _draw_pad(i: int) -> void:
 
 	# Pill contents: LAP x/y, lap progress bar and the position badge.
 	var fit := minf(1.0, pill_len / (PILL_LEN + 14.0)) if pill_len < PILL_LEN else 1.0
+	if landscape:
+		fit = minf(1.0, (pill_len + 30.0) / PILL_LEN) # the stacked layout needs less length
 	draw_set_transform(pill_center, rot, Vector2(fit, fit))
 	var done := 0
 	var frac := 0.0
