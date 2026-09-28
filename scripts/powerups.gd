@@ -9,7 +9,6 @@ extends Node2D
 ##                the cars at the back)
 ##   MINE       - drops a mine in every other lane behind you; a car driving over one
 ##                is blown off the track
-##   TRIPLE     - three rockets, one after another (rare jackpot)
 ## Shields block rockets, mines and lightning. Cars at the back mostly get rockets,
 ## lightning and nitro; the leader mostly gets shields and mines.
 
@@ -20,8 +19,10 @@ signal mine_hit(target, owner)
 const Car = preload("res://scripts/car.gd")
 const DrawLayer = preload("res://scripts/draw_layer.gd")
 
-const SPOTS := 3
-const RESPAWN := 5.0
+# Items are meant to be an occasional surprise, not constant chaos: two box rows per
+# lap, and a car's box only comes back after RESPAWN seconds (about every other lap).
+const SPOTS := 2
+const RESPAWN := 14.0
 const ROCKET_SPEED := 1250.0 # faster than any car, even on nitro
 const ROCKET_LIFE := 4.0
 const HIT_RANGE := 26.0
@@ -39,7 +40,7 @@ var _glow: Node2D
 var _roulette: Array[Dictionary] = [] # {car, item, t} item boxes still spinning
 var _icons: Node2D # roulette icons, drawn above the cars
 const ROULETTE_TIME := 0.75
-const ITEMS := ["shield", "rocket", "mega", "lightning", "mine", "triple"]
+const ITEMS := ["shield", "rocket", "mega", "lightning", "mine"]
 const MINE_LIFE := 15.0
 var _mines: Array[Dictionary] = [] # {s, lanes: Array[bool] (live mine per lane), owner, t}
 
@@ -157,7 +158,6 @@ func _roll(place: int, n: int) -> String:
 		"mega": lerpf(0.25, 0.22, behind),
 		"lightning": 0.0 if solo or place == 1 else lerpf(0.0, 0.16, behind),
 		"mine": 0.0 if solo or place == n else lerpf(0.26, 0.06, behind),
-		"triple": 0.0 if solo else lerpf(0.02, 0.1, behind),
 	}
 	var total := 0.0
 	for w in weights.values():
@@ -368,11 +368,6 @@ static func draw_item_icon(ci: CanvasItem, item: String, k: float) -> void:
 				ci.draw_line(d * 5.0 * k, d * 9.0 * k, OUTLINE, 2.5 * k)
 			ci.draw_circle(Vector2.ZERO, 6.5 * k, Color(0.25, 0.25, 0.3))
 			ci.draw_circle(Vector2.ZERO, 2.5 * k, Color(1.0, 0.15, 0.1))
-		"triple":
-			for j in 3:
-				var o := Vector2(-2.0 + j * 2.0, -6.0 + j * 6.0) * k
-				ci.draw_rect(Rect2(o + Vector2(-6, -1.5) * k, Vector2(8, 3) * k), Color(0.35, 0.35, 0.4))
-				ci.draw_colored_polygon(PackedVector2Array([o + Vector2(2, -2) * k, o + Vector2(6, 0) * k, o + Vector2(2, 2) * k]), Color(1.0, 0.3, 0.2))
 
 
 func _draw_glow(ci: CanvasItem) -> void:

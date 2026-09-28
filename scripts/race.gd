@@ -430,8 +430,10 @@ func _on_pickup(car, item: String) -> void:
 	if coach:
 		coach.on_pickup()
 	Sfx.play(Sfx.pickup, -4.0)
+	if Game.debug_log:
+		print("ITEM %.1f %s %s" % [race_time, _short_name(i), item])
 	if Game.debug_shot_on == item and race_time > 3.0:
-		Game.debug_capture({"lightning": 0.12, "mine": 0.9, "triple": 0.5}.get(item, 0.1))
+		Game.debug_capture({"lightning": 0.12, "mine": 0.9}.get(item, 0.1))
 	match item:
 		"shield":
 			car.shield = true
@@ -466,20 +468,7 @@ func _on_pickup(car, item: String) -> void:
 			world.powerups.drop_mines(car)
 			pads.toast(i, "MINES DROPPED!", Color(1.0, 0.45, 0.3), "behind you")
 			Sfx.play(Sfx.beep, -6.0, 0.7)
-		"triple":
-			pads.toast(i, "TRIPLE ROCKET!", Color(1.0, 0.55, 0.2))
-			_fire_triple(car)
 
-
-func _fire_triple(car) -> void:
-	for n in 3:
-		if phase != Phase.RACING or car.state == Car.State.CRASHED:
-			return
-		var target = world.powerups.fire_rocket(car)
-		if target != null:
-			pads.toast(target.index, "ROCKET INCOMING!", Color(1.0, 0.35, 0.3), "x%d" % (3 - n) if n < 2 else "")
-			Sfx.play(Sfx.boost, -5.0, 1.6 + n * 0.15)
-		await get_tree().create_timer(0.35).timeout
 
 
 func _on_mine_hit(target, owner) -> void:

@@ -24,13 +24,12 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 - **Saved settings:** menu choices, sound and music are remembered too. Everything lives in `user://profile.json`.
 
 ## Items and weather
-- **Power-up boxes (ITEMS ON/OFF):** three rows of "?" boxes, one per lane, sit around the track and respawn after 5 s. Items fire automatically, so the game stays one-button:
+- **Power-up boxes (ITEMS ON/OFF):** two rows of "?" boxes, one box per lane, sit around the track. Items are an occasional surprise, not constant chaos: after you take a box, yours comes back only after 14 s, so it's about one item every other lap. Items fire automatically, so the game stays one-button:
   - **SHIELD:** a bubble that blocks your next crash or rocket. It lasts 10 s and blinks before it runs out.
   - **ROCKET:** homes in on the car ahead of you (or 2nd place, if you're leading) and blows it off the track, even mid-nitro. A shield blocks it. The target gets a "ROCKET INCOMING!" warning.
   - **MEGA NITRO:** fills your tank, and the next burst lasts longer.
   - **LIGHTNING:** strikes every car ahead of you, shrinking and slowing them for 2 s. It's a rare comeback item and never given to the leader.
   - **MINES:** drops a mine in every other lane behind you. The next car in each lane is blown off the track.
-  - **TRIPLE ROCKET:** three rockets, one after another. It's a rare jackpot.
 
   Shields block rockets, mines and lightning.
 
