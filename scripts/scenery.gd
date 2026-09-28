@@ -17,9 +17,12 @@ const THEMES := {
 	"desert": [["rock", 7, 12, 34], ["cactus", 4, 11, 16], ["dune", 2, 60, 110], ["bones", 1, 12, 12]],
 	"snow": [["pine", 9, 16, 30], ["snow_rock", 4, 12, 24], ["frozen_pond", 1, 55, 90], ["snowman", 1, 12, 12, 4]],
 	"beach": [["palm", 7, 20, 30], ["umbrella", 2, 14, 18, 6], ["towel", 2, 12, 14, 6], ["lagoon", 1, 60, 100]],
+	"volcano": [["rock", 7, 12, 32], ["lava", 4, 28, 55, 9], ["vent", 3, 10, 14, 10], ["crack", 3, 30, 50, 12]],
+	"neon": [["building", 6, 36, 64], ["neon_sign", 5, 26, 40, 14], ["lamp", 2, 7, 7, 14]],
 }
 # Kinds that lie flat on the ground and are drawn first.
-const FLAT := ["parking", "pond", "frozen_pond", "lagoon", "dune", "towel", "flowers", "shell", "bones"]
+const FLAT := ["parking", "pond", "frozen_pond", "lagoon", "dune", "towel", "flowers", "shell", "bones", "lava", "crack"]
+const NEON_COLORS := [Color(1.0, 0.25, 0.7), Color(0.2, 0.9, 1.0), Color(0.65, 0.4, 1.0), Color(1.0, 0.85, 0.2), Color(0.3, 1.0, 0.5)]
 const CAR_COLORS := [
 	Color(0.85, 0.2, 0.2), Color(0.2, 0.45, 0.85), Color(0.92, 0.92, 0.95), Color(0.2, 0.2, 0.24),
 	Color(0.95, 0.75, 0.2), Color(0.3, 0.7, 0.4), Color(0.6, 0.62, 0.68), Color(0.55, 0.3, 0.7),
@@ -31,6 +34,9 @@ const PALETTES := {
 	"desert": [Color(0.55, 0.3, 0.2), Color(0.48, 0.27, 0.2), Color(0.62, 0.38, 0.24)],
 	"snow": [Color(0.13, 0.35, 0.3), Color(0.16, 0.4, 0.33), Color(0.1, 0.3, 0.28)],
 	"beach": [Color(0.95, 0.35, 0.3), Color(0.3, 0.65, 0.95), Color(1.0, 0.8, 0.25), Color(0.4, 0.85, 0.5)],
+	"volcano": [Color(0.22, 0.18, 0.18), Color(0.28, 0.22, 0.2), Color(0.18, 0.15, 0.16)],
+	"neon": [Color(0.14, 0.12, 0.2), Color(0.18, 0.14, 0.24), Color(0.12, 0.13, 0.2)], # dark towers; signs glow
+
 }
 
 
@@ -48,6 +54,8 @@ static func build(track, map, view := {}) -> Array[Dictionary]:
 
 	var kinds: Array = THEMES.get(map.scenery, THEMES["forest"])
 	var palette: Array = PALETTES.get(map.scenery, PALETTES["forest"])
+	if not map.scenery_palette.is_empty():
+		palette = map.scenery_palette
 	var total_weight := 0
 	for k in kinds:
 		total_weight += int(k[1])
@@ -295,6 +303,10 @@ static func draw_all(ci: CanvasItem, props: Array[Dictionary]) -> void:
 			"grandstand": _grandstand(ci, prop)
 			"parking": _parking(ci, prop)
 			"tires": _tires(ci, prop)
+			"lava": _lava(ci, prop)
+			"vent": _vent(ci, prop)
+			"crack": _crack(ci, prop)
+			"neon_sign": _neon_sign(ci, prop)
 
 
 static func _blob(center: Vector2, r: float, seed: int, points := 12, wobble := 0.18) -> PackedVector2Array:
@@ -614,6 +626,74 @@ static func _grandstand(ci: CanvasItem, prop: Dictionary) -> void:
 			ci.draw_circle(Vector2(x, y), 3.4, crowd[rng.randi() % crowd.size()])
 			x += 8.0 + rng.randf() * 3.0
 	ci.draw_rect(Rect2(-half.x - 3, -half.y - 10, half.x * 2.0 + 6, 8), Color(0.9, 0.2, 0.25))
+	ci.draw_set_transform(Vector2.ZERO)
+
+
+static func _lava(ci: CanvasItem, prop: Dictionary) -> void:
+	var p: Vector2 = prop.p
+	var r: float = prop.r
+	# Dark crust rim, bright molten middle, a few hot spots.
+	_outlined(ci, _blob(p, r * 1.1, prop.seed, 20, 0.16), Color(0.35, 0.1, 0.05), 3.0)
+	ci.draw_colored_polygon(_blob(p, r * 0.92, prop.seed, 20, 0.16), Color(0.95, 0.35, 0.05))
+	ci.draw_colored_polygon(_blob(p, r * 0.6, prop.seed + 4, 16, 0.2), Color(1.0, 0.6, 0.1))
+	for i in 4:
+		var q := p + Vector2.from_angle(prop.rot + i * 1.7) * r * (0.2 + 0.12 * i)
+		ci.draw_circle(q, r * 0.1, Color(1.0, 0.9, 0.45))
+	# Floating crust plates.
+	for i in 3:
+		var q := p + Vector2.from_angle(prop.rot * 2.0 + i * 2.1) * r * 0.55
+		ci.draw_colored_polygon(_blob(q, r * 0.14, prop.seed + i, 6, 0.25), Color(0.3, 0.1, 0.06))
+
+
+static func _vent(ci: CanvasItem, prop: Dictionary) -> void:
+	var p: Vector2 = prop.p
+	var r: float = prop.r
+	ci.draw_circle(p + SHADOW_OFFSET * 0.6, r * 1.1, SHADOW)
+	_outlined(ci, _blob(p, r, prop.seed, 9, 0.18), Color(0.2, 0.16, 0.16))
+	ci.draw_circle(p, r * 0.45, Color(0.1, 0.05, 0.04))
+	ci.draw_circle(p, r * 0.3, Color(1.0, 0.45, 0.1))
+	# A little smoke drifting off.
+	for i in 3:
+		ci.draw_circle(p + Vector2(r * 0.5 + i * 5.0, -r * 0.8 - i * 7.0), 4.0 + i * 1.5, Color(0.6, 0.58, 0.58, 0.35 - i * 0.08))
+
+
+static func _crack(ci: CanvasItem, prop: Dictionary) -> void:
+	# A glowing lava crack in the ground.
+	var p: Vector2 = prop.p
+	var r: float = prop.r
+	var pts := PackedVector2Array()
+	var dir := Vector2.from_angle(prop.rot)
+	for i in 6:
+		var t := float(i) / 5.0 - 0.5
+		var wig := dir.orthogonal() * sin(i * 2.3 + prop.seed) * r * 0.18
+		pts.append(p + dir * r * 2.0 * t + wig)
+	ci.draw_polyline(pts, Color(0.08, 0.04, 0.03), 7.0, true)
+	ci.draw_polyline(pts, Color(1.0, 0.4, 0.08), 3.5, true)
+	ci.draw_polyline(pts, Color(1.0, 0.85, 0.4), 1.2, true)
+
+
+static func _neon_sign(ci: CanvasItem, prop: Dictionary) -> void:
+	# A glowing neon sign seen from above: a bright outline with a soft halo.
+	var p: Vector2 = prop.p
+	var r: float = prop.r
+	var c: Color = NEON_COLORS[absi(int(prop.seed)) % NEON_COLORS.size()]
+	var rot := snappedf(prop.rot, PI * 0.5)
+	var half := Vector2(r * 0.95, r * 0.45)
+	ci.draw_set_transform(p, rot)
+	ci.draw_rect(Rect2(-half + Vector2(5, 6), half * 2.0), SHADOW)
+	ci.draw_rect(Rect2(-half - Vector2(2, 2), half * 2.0 + Vector2(4, 4)), OUTLINE)
+	ci.draw_rect(Rect2(-half, half * 2.0), Color(0.08, 0.06, 0.12))
+	for g in 3:
+		ci.draw_rect(Rect2(-half + Vector2(3, 3) - Vector2(g, g) * 2.0, half * 2.0 - Vector2(6, 6) + Vector2(g, g) * 4.0), Color(c, 0.18 - g * 0.05), false, 3.0)
+	ci.draw_rect(Rect2(-half + Vector2(4, 4), half * 2.0 - Vector2(8, 8)), c, false, 2.5)
+	# Glowing "letters": a row of short bars.
+	var x := -half.x + 10.0
+	var k := 0
+	while x < half.x - 10.0:
+		var h := half.y * (0.5 if k % 3 == 1 else 0.8)
+		ci.draw_rect(Rect2(x, -h * 0.5, 4, h), c.lightened(0.3))
+		x += 8.0
+		k += 1
 	ci.draw_set_transform(Vector2.ZERO)
 
 

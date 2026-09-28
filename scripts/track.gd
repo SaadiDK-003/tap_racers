@@ -80,6 +80,19 @@ func set_deck_overlay(c: Color) -> void:
 		_deck_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
+## Glowing scenery for night races: [position, radius, colour] for lava, vents,
+## cracks and neon signs.
+func glow_points() -> Array:
+	var out := []
+	for prop in _props:
+		match prop.k:
+			"lava": out.append([prop.p, prop.r * 2.2, Color(1.0, 0.45, 0.1, 0.55)])
+			"vent": out.append([prop.p, prop.r * 2.5, Color(1.0, 0.4, 0.1, 0.45)])
+			"crack": out.append([prop.p, prop.r * 1.4, Color(1.0, 0.4, 0.1, 0.3)])
+			"neon_sign": out.append([prop.p, prop.r * 2.4, Color(Scenery.NEON_COLORS[absi(int(prop.seed)) % Scenery.NEON_COLORS.size()], 0.5)])
+	return out
+
+
 ## Street lamps in the scenery (they glow at night).
 func lamp_points() -> PackedVector2Array:
 	var out := PackedVector2Array()

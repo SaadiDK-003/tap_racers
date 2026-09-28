@@ -28,3 +28,5 @@ var bridge_half := 190.0 # bridge length either side of the crossing
 ## Scenery theme: "city", "forest", "desert", "snow" or "beach" (see scripts/scenery.gd).
 var scenery := "forest"
 var scenery_density := 1.0
+## Optional colours for the scenery props (empty = the theme's own palette).
+var scenery_palette: Array[Color] = []

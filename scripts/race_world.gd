@@ -110,6 +110,9 @@ func _draw_weather(ci: CanvasItem) -> void:
 func _draw_night_lights(ci: CanvasItem) -> void:
 	if weather != "night":
 		return
+	for g in track.glow_points():
+		var r: float = g[1]
+		ci.draw_texture_rect(Car.glow_texture(), Rect2(g[0] - Vector2(r, r), Vector2(r, r) * 2.0), false, g[2])
 	for p in track.lamp_points():
 		ci.draw_texture_rect(Car.glow_texture(), Rect2(p - Vector2(60, 60), Vector2(120, 120)), false, Color(1.0, 0.85, 0.5, 0.45))
 	# Floodlights along the start straight.

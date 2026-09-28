@@ -36,6 +36,9 @@ const MAPS := [
 	preload("res://maps/frosty_peaks.gd"),
 	preload("res://maps/palm_beach.gd"),
 	preload("res://maps/crossover.gd"),
+	preload("res://maps/volcano_rush.gd"),
+	preload("res://maps/neon_nights.gd"),
+	preload("res://maps/autumn_valley.gd"),
 ]
 
 var num_players := 2 # humans
