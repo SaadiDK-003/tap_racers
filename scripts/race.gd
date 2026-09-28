@@ -59,7 +59,6 @@ var _rocket_hits: Array[int] = [] # cars each racer knocked out with rockets
 var _was_last: Array[bool] = [] # was last after lap 1 (COMEBACK KID)
 var _weather := "clear"
 # Solo modes.
-var _underdog = null # rematch: the car with the head start
 var _intro_t := 0.0
 var coach: TutorialCoach
 var trial: TimeTrial
@@ -70,13 +69,6 @@ func _ready() -> void:
 	add_child(world)
 	world.build(Game.next_map(), Game.total_racers())
 	cars = world.cars
-	if Game.rematch_boost >= 0 and Game.rematch_boost < cars.size():
-		var underdog = cars[Game.rematch_boost]
-		underdog.progress += 70.0 # a car length or two ahead of the grid
-		underdog.nitro = 1.0
-		underdog.nitro_armed = true
-		_underdog = underdog
-	Game.rematch_boost = -1
 	if Game.items_enabled():
 		world.enable_powerups()
 		world.powerups.effects = world.effects
@@ -320,8 +312,6 @@ func _start_race() -> void:
 	_sub_label.text = ""
 	if coach:
 		coach.on_start()
-	if _underdog != null:
-		pads.toast(_underdog.index, "HEAD START!", Color(1.0, 0.85, 0.2), "revenge time - nitro full!")
 	var t := create_tween()
 	t.tween_interval(0.7)
 	t.tween_property(_lights, "modulate:a", 0.0, 0.3)
@@ -898,15 +888,12 @@ func _show_results() -> void:
 		box.add_child(again)
 		buttons.append(again)
 	else:
-		# Single race: REMATCH (same track, last-placed human gets a head start) or a
-		# new random track.
-		var loser := _rematch_underdog(order)
+		# Single race: REMATCH (same track again) or a new random track.
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		var rematch := _make_button("REMATCH", func():
 			Game.retry_map = Game.current_map
-			Game.rematch_boost = loser
 			Game.start_cup()
 			get_tree().reload_current_scene(), true)
 		var fresh := _make_button("NEW TRACK", next_fn)
@@ -915,10 +902,6 @@ func _show_results() -> void:
 			row.add_child(b)
 			buttons.append(b)
 		box.add_child(row)
-		if loser >= 0:
-			var hint := _make_label(17, 2, "Rematch: %s gets a head start and full nitro!" % Game.short_name(loser))
-			hint.add_theme_color_override("font_color", Game.PLAYER_COLORS[loser].lightened(0.3))
-			box.add_child(hint)
 	var menu := _make_button("MENU", _go_menu)
 	box.add_child(menu)
 	buttons.append(menu)
@@ -940,15 +923,6 @@ func _show_results() -> void:
 	await get_tree().create_timer(1.2).timeout
 	for b in buttons:
 		b.disabled = false
-
-
-## The last-placed human (if a human won there's still someone behind to help),
-## or -1 when there's no one to boost (a single human who won).
-func _rematch_underdog(order: Array) -> int:
-	for k in range(order.size() - 1, 0, -1):
-		if not Game.is_cpu(order[k].index):
-			return order[k].index
-	return -1
 
 
 ## Saves stats / records / coins for the human players; returns a one-line summary.

@@ -27,7 +27,7 @@
 - [x] **Builds:** Web, Windows, Linux and Android, plus an app icon.
 
 ## Phase 6: Party, polish and progression (in progress)
-- [x] **Rematch with handicap:** a REMATCH button after a race; last place gets a small head start and a full nitro tank.
+- [x] **Rematch:** a REMATCH button after a race (same track). The head-start handicap was dropped.
 - [x] **Track intro sweep:** a 2-second camera sweep over the track before the start lights.
 - [ ] **Career mode:** a ladder of events against tougher named CPU drivers, unlocking tracks and garage items.
 - [ ] **Win streak "king":** a crown on the pad of whoever won twice in a row, and bonus coins for beating them.

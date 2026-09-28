@@ -9,7 +9,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 
 ## Modes
 - **Players and CPU rivals:** 1–4 human players, with CPU rivals filling the grid up to 4 cars. A single player always gets at least one CPU. CPU level is Easy, Normal or Hard.
-- **Rematch:** after a single race, REMATCH replays the same track, and the last-placed human starts a little ahead with a full nitro tank. NEW TRACK picks a random one.
+- **Rematch:** after a single race, REMATCH replays the same track, and NEW TRACK picks a random one.
 - **Races:** *Single* race, or a *Cup* of 3 or 5 races on random tracks with no repeats. Points are 10 / 6 / 3 / 1, and standings show after each race. The Cup ends on a podium with a trophy.
 - **CPU drivers:** each race picks CPU rivals from 8 personalities: Blaze, Captain Crash, Granny Speed, Turbo Tina, Professor Pit, Rookie Ray, Duchess and Zippy. Their name shows on their pad and in the results, and now and then they say something in a speech bubble when they start, overtake, take the lead, get hit, crash or win.
 - **Items from lap 2:** the "?" boxes only appear once the leader starts lap 2, so lap 1 is a clean race.

@@ -58,7 +58,6 @@ const WEATHER_MODES := ["RANDOM", "CLEAR", "RAIN", "NIGHT"]
 
 var tutorial := false # the guided "how to play" race
 var retry_map := -1 # race this map again instead of a random one (time trial retry, rematch)
-var rematch_boost := -1 # rematch: car slot that gets a head start and full nitro (-1 = none)
 
 # Championship state.
 var cup_race := 0 # races finished so far
@@ -412,7 +411,6 @@ func _parse_debug_args() -> void:
 			"races": races = maxi(0, value.to_int())
 			"tutorial": tutorial = true
 			"log": debug_log = true
-			"rematch": rematch_boost = value.to_int() # test the rematch head start
 			"intro": debug_no_intro = value == "off"
 			"touch": _touch_seen = true # preview the phone layout on desktop
 			"safe":
