@@ -27,6 +27,11 @@ var bridge_half := 190.0 # bridge length either side of the crossing
 
 ## Jump over water: the middle of the water gap (on a straight). INF = no jump.
 var jump_point := Vector2.INF
+## "river" (splash into water) or "ravine" (a rocky chasm taken off a hill crest).
+var jump_kind := "river"
+var jump_gap := 120.0 # length of the gap
+var jump_ramp := 40.0 # length of the take-off and landing ramps
+var jump_min_speed := 470.0 # speed needed at the lip to clear the gap
 
 ## Railway level crossing (on a straight): trains cross the road now and then.
 ## The rails run off the map on one side and into a tunnel on the other. INF = none.

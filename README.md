@@ -123,9 +123,10 @@ Thirteen tracks are in the random rotation, each with its own scenery theme:
 - **Harbor Docks**: an L-shaped circuit around a port, with container yards, boats, cranes and dock lamps.
 - **Splash Canyon**: a desert canyon with a **jump over a river**. Hit the ramp at speed (at least about two-thirds of top speed) to fly across. Too slow and it's a SPLASH, and you come back on the far bank. Nitro gives BIG AIR.
 
+- **Summit Leap**: an alpine track with a **ravine jump** at the top of the long straight, taken off a hill crest. It's a bigger gap than Splash Canyon's river: keep your foot down up the hill (about 88% of top speed) or you FALL IN and come back on the far side. With nitro it's huge BIG AIR.
 - **Rail Crossing**: countryside with a **railway level crossing** on the long straight. Every 7–12 s the lights flash, a bell rings and the barriers drop; 2 s later a train sweeps across into a tunnel. Wait at the barrier, or risk it: the train knocks you off (a shield saves you). Players heading for it get a "TRAIN!" warning. CPUs stop for it and hold their nitro; Easy ones sometimes chance it.
 
-For your own jump track, set `m.jump_point` to the middle of the water gap on a long straight. The river is drawn automatically and stops before it reaches any other part of the road. For a level crossing, set `m.rail_point` on a straight: the rails run off the map on one side and end in a tunnel wherever another part of the road would be in the way.
+For your own jump track, set `m.jump_point` to the middle of the gap on a long straight, and optionally `m.jump_kind = "ravine"`, `m.jump_gap`, `m.jump_ramp` and `m.jump_min_speed` (the river is 120 / 40 / 470). The river is drawn automatically and stops before it reaches any other part of the road. For a level crossing, set `m.rail_point` on a straight: the rails run off the map on one side and end in a tunnel wherever another part of the road would be in the way.
 
 Scenery (`scripts/scenery.gd`) is generated automatically in the empty ground around and inside each track, along with tyre walls outside the corners, a grandstand at the start line and spectator parking lots.
 

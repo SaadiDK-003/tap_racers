@@ -896,14 +896,22 @@ func _on_splashed(car) -> void:
 		print("SPLASH %.2f %s" % [race_time, _short_name(car.index)])
 	if Game.debug_shot_on == "splash":
 		Game.debug_capture(0.25)
-	world.effects.splash(car.position)
-	_fx("splash", car)
-	_note(60, car, "SPLASH!")
-	Sfx.play(Sfx.crash, -4.0, 0.55)
-	Sfx.play(Sfx.boost, -8.0, 0.5) # whoosh of water
-	pads.toast(car.index, "SPLASH!", Color(0.45, 0.8, 1.0), "too slow for the jump")
+	var ravine: bool = world.map.jump_kind == "ravine"
+	if ravine:
+		world.effects.land_dust(car.position) # dust off the rim as it drops
+		_fx("land", car)
+		_note(60, car, "FELL IN!")
+		Sfx.play(Sfx.crash, -6.0, 0.4)
+		pads.toast(car.index, "FELL IN!", Color(1.0, 0.6, 0.3), "not fast enough")
+	else:
+		world.effects.splash(car.position)
+		_fx("splash", car)
+		_note(60, car, "SPLASH!")
+		Sfx.play(Sfx.crash, -4.0, 0.55)
+		pads.toast(car.index, "SPLASH!", Color(0.45, 0.8, 1.0), "too slow for the jump")
+	Sfx.play(Sfx.boost, -8.0, 0.5) # whoosh
 	_crowd(true)
-	_cpu_says(car, "splash", 0.8)
+	_cpu_says(car, "fall" if ravine else "splash", 0.8)
 	Game.buzz_for(car.index, 180, 1.0)
 
 

@@ -110,8 +110,9 @@ func lamp_points() -> PackedVector2Array:
 
 # --- Jump over water ------------------------------------------------------------
 
-const JUMP_RAMP := 40.0 # length of the take-off and landing ramps
-const JUMP_GAP := 120.0 # length of open water between the ramps
+var jump_ramp := 40.0 # length of the take-off and landing ramps (from the map)
+var jump_gap := 120.0 # length of the gap between the ramps
+var jump_min := 470.0 # speed needed at the lip to clear it
 var _jump_s := -1.0 # distance along the loop of the middle of the gap (-1 = none)
 var _river_from := 0.0 # river extent across the road (negative side .. positive side)
 var _river_to := 0.0
@@ -123,7 +124,7 @@ func has_jump() -> bool:
 
 ## Distance along the loop where cars leave the ground (end of the take-off ramp).
 func jump_lip() -> float:
-	return fposmod(_jump_s - JUMP_GAP * 0.5, length)
+	return fposmod(_jump_s - jump_gap * 0.5, length)
 
 
 ## 0..1 across the water gap, or -1 when `s` isn't over the gap.
@@ -131,7 +132,7 @@ func jump_fraction(s: float) -> float:
 	if _jump_s < 0.0:
 		return -1.0
 	var d := fposmod(s - jump_lip(), length)
-	return d / JUMP_GAP if d <= JUMP_GAP else -1.0
+	return d / jump_gap if d <= jump_gap else -1.0
 
 
 ## Distance from `s` ahead to the take-off lip (0..length).
@@ -143,8 +144,8 @@ func dist_to_lip(s: float) -> float:
 func in_jump_zone(s: float) -> bool:
 	if _jump_s < 0.0:
 		return false
-	var d := fposmod(s - jump_lip() + JUMP_RAMP + 30.0, length)
-	return d <= JUMP_GAP + (JUMP_RAMP + 30.0) * 2.0
+	var d := fposmod(s - jump_lip() + jump_ramp + 30.0, length)
+	return d <= jump_gap + (jump_ramp + 30.0) * 2.0
 
 
 const JUMP_RIVER := 900.0 # how far the river runs either side of the road
@@ -174,6 +175,9 @@ func _find_jump() -> void:
 	var jp: Vector2 = map.jump_point
 	if not jp.is_finite():
 		return
+	jump_gap = map.jump_gap
+	jump_ramp = map.jump_ramp
+	jump_min = map.jump_min_speed
 	var best := 0
 	for i in _n:
 		if _pos[i].distance_to(jp) < _pos[best].distance_to(jp):
@@ -194,7 +198,7 @@ func _find_jump() -> void:
 			var clear := true
 			for i in range(0, _n, 2):
 				var ds := absf(fposmod(i * _step - _jump_s + length * 0.5, length) - length * 0.5)
-				if ds > JUMP_GAP + 200.0 and _pos[i].distance_to(q) < map.road_width * 0.5 + JUMP_GAP * 0.5 + 60.0:
+				if ds > jump_gap + 200.0 and _pos[i].distance_to(q) < map.road_width * 0.5 + jump_gap * 0.5 + 60.0:
 					clear = false
 					break
 			if not clear:
@@ -345,15 +349,19 @@ func _draw_jump(ci: CanvasItem) -> void:
 		return
 	var w: float = map.road_width
 	var lip := jump_lip()
-	var land := lip + JUMP_GAP
+	var land := lip + jump_gap
 	# A winding river crosses the whole canyon under the gap: sandy banks, water, ripples.
 	var cj: Vector2 = point_at(_jump_s, 0.0)
 	var along: Vector2 = tangent_at(_jump_s)
 	var across := Vector2(-along.y, along.x)
+	if map.jump_kind == "ravine":
+		_draw_ravine(ci, cj, along, across)
+		_draw_ramps(ci, lip, land, true)
+		return
 	# The infield end is a round pond (a river can't cross the track a second time).
 	var pond_t := _river_from if absf(_river_from) < absf(_river_to) else _river_to
 	for layer in 2:
-		var half := JUMP_GAP * 0.5 + (10.0 if layer == 0 else 0.0)
+		var half := jump_gap * 0.5 + (10.0 if layer == 0 else 0.0)
 		var col := Color(0.72, 0.6, 0.42) if layer == 0 else Color(0.14, 0.42, 0.62)
 		var poly := PackedVector2Array()
 		var steps := 40
@@ -367,14 +375,34 @@ func _draw_jump(ci: CanvasItem) -> void:
 		ci.draw_circle(cj + across * pond_t + along * _river_bend(pond_t), half * 1.25, col)
 	for k in 12:
 		var t := lerpf(_river_from, _river_to, (k + 0.5) / 12.0)
-		var q: Vector2 = cj + across * t + along * (_river_bend(t) + (k % 3 - 1) * JUMP_GAP * 0.25)
+		var q: Vector2 = cj + across * t + along * (_river_bend(t) + (k % 3 - 1) * jump_gap * 0.25)
 		ci.draw_line(q - across * 16.0, q + across * 16.0, Color(0.55, 0.8, 0.95, 0.6), 3.0, true)
-	# Ramps: yellow/black warning stripes, brighter towards the edge of the gap.
-	for r in [[lip - JUMP_RAMP, lip], [land, land + JUMP_RAMP]]:
+	_draw_ramps(ci, lip, land, false)
+
+
+## Ramps: yellow/black warning stripes, brighter towards the edge of the gap. On a
+## hill crest (`hill`) the ramp is shaded like a slope, with stripes only at the lip.
+func _draw_ramps(ci: CanvasItem, lip: float, land: float, hill: bool) -> void:
+	var w: float = map.road_width
+	for r in [[lip - jump_ramp, lip], [land, land + jump_ramp]]:
 		var s0: float = r[0]
 		var s1: float = r[1]
 		var quad := PackedVector2Array([point_at(s0, -w * 0.5), point_at(s1, -w * 0.5), point_at(s1, w * 0.5), point_at(s0, w * 0.5)])
 		ci.draw_colored_polygon(quad, Color(0.35, 0.35, 0.38))
+		if hill:
+			# Slope shading: darker at the foot, lighter towards the crest at the gap.
+			var bands := 8
+			for b in bands:
+				var f0 := float(b) / bands
+				var f1 := float(b + 1) / bands
+				var toward_gap := s0 < lip
+				var a0: float = lerpf(s0, s1, f0)
+				var a1: float = lerpf(s0, s1, f1)
+				var light := f1 if toward_gap else 1.0 - f0
+				var band := PackedVector2Array([point_at(a0, -w * 0.5 - 6.0), point_at(a1, -w * 0.5 - 6.0), point_at(a1, w * 0.5 + 6.0), point_at(a0, w * 0.5 + 6.0)])
+				ci.draw_colored_polygon(band, map.road.lerp(Color(0.62, 0.62, 0.66), light * 0.7))
+			s0 = s1 - 18.0 if s0 < lip else s0
+			s1 = s0 + 18.0 if s0 >= lip else s1
 		var n := 7
 		for k in n:
 			var a0 := -w * 0.5 + w * k / n
@@ -383,6 +411,43 @@ func _draw_jump(ci: CanvasItem) -> void:
 			ci.draw_colored_polygon(stripe, Color(1.0, 0.8, 0.1) if k % 2 == 0 else Color(0.08, 0.08, 0.1))
 		var edge := s1 if s0 < lip else s0
 		ci.draw_line(point_at(edge, -w * 0.5), point_at(edge, w * 0.5), Color(0.95, 0.95, 0.95), 4.0)
+
+
+## A rocky chasm across the canyon: a jagged rim, dark walls and a black depth,
+## narrowing to a crack at the infield end (it can't cross the road a second time).
+func _draw_ravine(ci: CanvasItem, cj: Vector2, along: Vector2, across: Vector2) -> void:
+	var inner_t := _river_from if absf(_river_from) < absf(_river_to) else _river_to
+	# Full width under the road (and a little beyond); it narrows only past that.
+	var full: float = map.road_width * 0.5 + 24.0
+	var taper_len := maxf(20.0, absf(inner_t) - full)
+	var taper_at := func(t: float) -> float:
+		if signf(t) != signf(inner_t) or absf(t) <= full:
+			return 1.0
+		return clampf(absf(t - inner_t) / taper_len, 0.08, 1.0)
+	var layers := [[18.0, map.blob.darkened(0.25)], [6.0, Color(0.28, 0.25, 0.24)], [-8.0, Color(0.13, 0.11, 0.11)], [-30.0, Color(0.04, 0.03, 0.04)]]
+	for li in layers.size():
+		var grow: float = layers[li][0]
+		var col: Color = layers[li][1]
+		var poly := PackedVector2Array()
+		var steps := 60
+		for side in [-1.0, 1.0]:
+			for k in steps + 1:
+				var f := float(k) / steps if side < 0.0 else 1.0 - float(k) / steps
+				var t := lerpf(_river_from, _river_to, f)
+				# Narrow to a crack over the last stretch at the infield end.
+				var taper: float = taper_at.call(t)
+				var jag := sin(t * 0.09 + side * 2.1 + li) * 5.0 + sin(t * 0.23 + side) * 3.0
+				var half := maxf(2.0, (jump_gap * 0.5 + grow + jag) * taper)
+				poly.append(cj + across * t + along * (_river_bend(t) + side * half))
+		ci.draw_colored_polygon(poly, col)
+	# A few rocks on the rim.
+	for k in 14:
+		var t := lerpf(_river_from, _river_to, (k + 0.5) / 14.0)
+		var side := 1.0 if k % 2 == 0 else -1.0
+		var taper: float = taper_at.call(t)
+		var q: Vector2 = cj + across * t + along * (_river_bend(t) + side * (jump_gap * 0.5 + 16.0) * taper)
+		ci.draw_circle(q, 7.0 + (k % 3) * 2.0, Color(0.42, 0.4, 0.4))
+		ci.draw_circle(q - Vector2(2, 2), 4.0 + (k % 3), Color(0.55, 0.53, 0.52))
 
 
 func has_bridge() -> bool:

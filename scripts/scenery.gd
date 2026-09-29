@@ -56,7 +56,7 @@ static func build(track, map, view := {}) -> Array[Dictionary]:
 
 	# Keep every prop out of the river (invisible placeholder props along it).
 	for q in track.river_points():
-		_register(grid, props, {"k": "river_space", "p": q, "r": track.JUMP_GAP * 0.5 + 30.0, "rot": 0.0, "seed": 0, "c": Color.WHITE})
+		_register(grid, props, {"k": "river_space", "p": q, "r": track.jump_gap * 0.5 + 30.0, "rot": 0.0, "seed": 0, "c": Color.WHITE})
 	# ...and off the railway (and its tunnel mound).
 	for q in track.rail_points():
 		_register(grid, props, {"k": "river_space", "p": q, "r": track.RAIL_HALF + 34.0, "rot": 0.0, "seed": 0, "c": Color.WHITE})

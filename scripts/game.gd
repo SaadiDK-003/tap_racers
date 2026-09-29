@@ -47,6 +47,7 @@ const MAPS := [
 	preload("res://maps/harbor_docks.gd"),
 	preload("res://maps/splash_canyon.gd"),
 	preload("res://maps/rail_crossing.gd"),
+	preload("res://maps/summit_leap.gd"),
 ]
 
 var num_players := 2 # humans

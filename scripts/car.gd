@@ -37,7 +37,6 @@ const SLIP_RECOVER := 6.0 # how fast the car regains grip once back under it
 const SLIP_VISIBLE := 0.25 # below this the car looks perfectly planted
 const MAX_DRIFT := 10.0 # sideways slide (px) just before a crash
 const CRASH_TIME := 1.1
-const JUMP_MIN := 470.0 # speed needed at the ramp to clear the water
 const SPLASH_TIME := 1.1
 const CRUISE_SPEED := 220.0
 const LENGTH := 42.0
@@ -398,9 +397,10 @@ func _check_jump() -> bool:
 			air_h = 0.0
 			landed.emit(self)
 		else:
-			air_h = sin(PI * f) * clampf(speed / TOP_SPEED, 0.75, 1.25)
+			# Higher over a bigger gap (a 190 ravine flies ~1.4x higher than the river).
+			air_h = sin(PI * f) * clampf(speed / TOP_SPEED, 0.75, 1.25) * clampf(track.jump_gap / 120.0, 1.0, 1.5)
 	elif f >= 0.0 and f < 0.5:
-		if speed >= JUMP_MIN or state == State.FINISHED:
+		if speed >= track.jump_min or state == State.FINISHED:
 			airborne = true
 			_drift = 0.0
 			jumped.emit(self, speed > TOP_SPEED * 1.05)
@@ -479,7 +479,7 @@ func _crashed(delta: float) -> void:
 	if _crash_timer <= 0.0:
 		# Out of the water (or a crash that ended over it): back on the landing ramp.
 		if _sink or (track.has_jump() and track.jump_fraction(progress) >= 0.0):
-			progress = track.jump_lip() + track.JUMP_GAP + track.JUMP_RAMP * 0.6 + floorf((progress - track.jump_lip()) / track.length) * track.length
+			progress = track.jump_lip() + track.jump_gap + track.jump_ramp * 0.6 + floorf((progress - track.jump_lip()) / track.length) * track.length
 		_sink = false
 		state = State.RACING
 		_invuln = 1.0
@@ -518,7 +518,9 @@ func _update_engine() -> void:
 ## keeps CPUs from driving identically.
 func bot_throttle(skill := 1.0, top_share := 1.0) -> bool:
 	# Approaching the jump: floor it, whatever the usual speed cap.
-	if track.has_jump() and track.dist_to_lip(progress) < 420.0 and speed < JUMP_MIN * 1.2:
+	# (A faster jump needs a longer run-up: 420 for the river, ~900 for the ravine.)
+	var run_up: float = 420.0 + maxf(0.0, track.jump_min - 470.0) * 3.0
+	if track.has_jump() and track.dist_to_lip(progress) < run_up and speed < track.jump_min * 1.2:
 		return true
 	if not boosting and speed > TOP_SPEED * top_share:
 		return false

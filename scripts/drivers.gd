@@ -72,6 +72,7 @@ static func pick(count: int) -> Array:
 const GENERIC := {
 	"splash": ["I can't swim!", "Glub glub...", "Who put water here?!", "Brrr, cold!"],
 	"jump": ["Wheee!", "Look, I'm flying!", "Big air!"],
+	"fall": ["Aaaaah!", "Where did the road go?!", "Nooooo!", "I'll be back!"],
 }
 
 
