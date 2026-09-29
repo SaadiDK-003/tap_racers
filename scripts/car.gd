@@ -82,6 +82,8 @@ var tap_nitro := true # a double-tap fires nitro (players; computer drivers fire
 var on_shortcut := false # driving the shortcut (progress still counts in main-loop units)
 var shortcut_plan := false # computer drivers: going for the shortcut this lap
 var _plan_lap := -1
+var _sc_in := 0.0 # (debug log) when it turned in, and its slowest speed on the shortcut
+var _sc_min := 0.0
 var _base_scale := Vector2.ZERO
 const SHIELD_TIME := 10.0
 var mega := false # power-up: the next nitro burst lasts longer
@@ -188,8 +190,11 @@ func _update_route(before: float) -> void:
 	if not track.has_shortcut():
 		return
 	if on_shortcut:
+		_sc_min = minf(_sc_min, speed)
 		if not track.in_shortcut(progress):
 			on_shortcut = false
+			if Game.debug_log:
+				print("SHORTCUT OUT car %d took %.2fs, slowest %d, now %d" % [index, _clock - _sc_in, int(_sc_min), int(speed)])
 		return
 	var d_before: float = track.dist_to_fork(before)
 	if d_before <= speed * 0.1 + 2.0 and track.in_shortcut(progress):
@@ -197,6 +202,8 @@ func _update_route(before: float) -> void:
 			print("FORK MISSED car %d speed %d" % [index, int(speed)])
 		if state == State.RACING and not airborne and speed < track.SC_TAKE_SPEED:
 			on_shortcut = true
+			_sc_in = _clock
+			_sc_min = speed
 			took_shortcut.emit(self)
 
 
@@ -379,7 +386,7 @@ func can_crash() -> bool:
 
 ## Double-tap action: fires a nitro burst if the tank is full.
 func fire_nitro() -> void:
-	if state != State.RACING or not nitro_armed or boosting:
+	if state != State.RACING or not nitro_armed or boosting or Game.debug_no_nitro:
 		return
 	boosting = true
 	_burn_mult = 1.7 if mega else 1.0

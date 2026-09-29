@@ -123,7 +123,7 @@ Thirteen tracks are in the random rotation, each with its own scenery theme:
 - **Harbor Docks**: an L-shaped circuit around a port, with container yards, boats, cranes and dock lamps.
 - **Splash Canyon**: a desert canyon with a **jump over a river**. Hit the ramp at speed (at least about two-thirds of top speed) to fly across. Too slow and it's a SPLASH, and you come back on the far bank. Nitro gives BIG AIR.
 
-- **Quarry Cut**: a big outer loop with a narrow **gravel shortcut** across the middle. Slow down at the SHORTCUT sign (let go before the fork) to turn in; keep your finger down to stay on the fast way round. The shortcut is much shorter but twisty, with less grip, and you can't use nitro on the run-up if you want to turn in. Its item boxes and mines are on the main road, and rockets don't follow you onto it.
+- **Quarry Cut**: a hairpin at the top with a narrow **gravel shortcut** right beside it, cutting the turn short. Slow down at the SHORTCUT sign (let go before the fork) to turn in; keep your finger down to stay on the hairpin. The shortcut is shorter but loose, and a nitro burst won't have run out by the fork, so each lap it's nitro or shortcut (about even). Its item boxes and mines are on the main road, and rockets don't follow you onto it.
 - **Summit Leap**: an alpine track with a **ravine jump** at the top of the long straight, taken off a hill crest. It's a bigger gap than Splash Canyon's river: keep your foot down up the hill (about 88% of top speed) or you FALL IN and come back on the far side. With nitro it's huge BIG AIR.
 - **Rail Crossing**: countryside with a **railway level crossing** on the long straight. Every 7–12 s the lights flash, a bell rings and the barriers drop; 2 s later a train sweeps across into a tunnel. Wait at the barrier, or risk it: the train knocks you off (a shield saves you). Players heading for it get a "TRAIN!" warning. CPUs stop for it and hold their nitro; Easy ones sometimes chance it.
 
@@ -147,7 +147,7 @@ godot --path . -- --race --players=4 --map=1 --laps=2 --bots
 - `--menu_panel=setup` (or `settings`) opens that menu panel directly.
 - `--scene=garage` (or `records`; `--garage_tab=2` opens the trail tab) opens that screen directly, and `--coins=500` sets the coin balance for testing.
 - `--streak=2,3` makes P2 the king with 3 wins in a row.
-- `--shortcut=always` (or `never`) makes computer drivers always (or never) take a shortcut.
+- `--shortcut=always` (or `never`) makes computer drivers always (or never) take a shortcut, and `--nitro=off` turns nitro off (for comparing lap times).
 - `--race --career=3` races career event 4 (numbered from 0).
 - `--tutorial` starts the tutorial, `--races=0` starts a time trial, and `--autopilot` lets the bot drive P1 while still saving results.
 - `--bots` makes the computer drive every car well. `--bots=coast` makes them let go before a jump, to test splashes. `--bots=reckless` never brakes (to test crashes).

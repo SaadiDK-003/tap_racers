@@ -97,6 +97,7 @@ var debug_shot := ""
 var debug_shot_time := 1.0
 var debug_shot_on := "" # --shot_on=rocket: take the --shot screenshot just after a rocket fires
 var debug_skip_menu := false
+var debug_no_nitro := false # --nitro=off (tests)
 var debug_shortcut := "" # --shortcut=always / never: computer drivers' choice (tests)
 var debug_shower := -1 # --shower (or --shower=LAP): rain rolls in mid-race
 
@@ -584,6 +585,7 @@ func _parse_debug_args() -> void:
 				debug_coast = value == "coast" # lets go before the jump ramp (tests splashes)
 			"race": debug_skip_menu = true
 			"shortcut": debug_shortcut = value
+			"nitro": debug_no_nitro = value == "off"
 			"shower": debug_shower = maxi(2, value.to_int()) if value != "" else 2
 			"streak": # --streak=2,3: P2 is king with 3 wins in a row
 				var v := value.split(",")

@@ -35,7 +35,7 @@
 - [x] **Haptics pass:** vibration for crashes, splashes, hits, landings, nitro and wins (humans only, rate-limited, with a setting). Also a performance pass: the pads' static parts are baked into one texture (draw calls down from ~150 to ~60 a frame), and fonts are pre-rasterized while the race loads.
 - [x] **Per-body engine sounds:** each body has its own synthesized engine and pitch range (kart buzz, formula whine, muscle rumble, buggy rattle, hover hum), and tapping a body in the garage revs it.
 - [x] **Weather mid-race:** in random-weather races, about 3 in 10 clear races get a shower between lap 2 and the second-to-last lap: lightning, thunder, RAIN INCOMING!, then rain, tint and slippery grip build up over 5 seconds.
-- [x] **Shortcut track:** Quarry Cut, with a narrow gravel shortcut across the middle. Reach the SHORTCUT sign slowly (below ~520) to turn in; it's much shorter but twisty and loose, so it's about even with the fast way round. CPUs sometimes take it.
+- [x] **Shortcut track:** Quarry Cut: a hairpin with a gravel shortcut right beside it. Reach the fork slowly (below ~520) to turn in. It's about even with using nitro that lap (17.9 s vs 17.4 s over 5 laps), so it's a real choice. CPUs sometimes take it.
 - [x] **Moving obstacles:** Rail Crossing, a track with a level crossing: lights, bell and barriers, then a train sweeps across into a tunnel. Wait, or get knocked off (a shield saves you). CPUs stop for it (Easy ones sometimes chance it).
 - [x] **Second jump track:** Summit Leap, an alpine track with a 190-long ravine taken off a hill crest (the river is 120). You need ~88% of top speed; too slow and you FALL IN. Cars fly higher over a bigger gap.
 - [ ] **Tournament brackets:** up to 8 friends, heats and a final.
