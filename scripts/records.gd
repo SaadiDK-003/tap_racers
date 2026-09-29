@@ -3,7 +3,6 @@ extends Control
 ## and a few all-time totals.
 
 const CoinBadge = preload("res://scripts/coin_badge.gd")
-const FitBox = preload("res://scripts/fit_box.gd")
 
 
 func _ready() -> void:
@@ -14,8 +13,8 @@ func _ready() -> void:
 	add_child(bg)
 	var landscape := Game.is_landscape_layout()
 
-	# Header pinned at the top, BACK pinned at the bottom, lists in between (scaled
-	# down to fit if needed), so the page fits any window however many tracks there are.
+	# Header pinned at the top, BACK pinned at the bottom, lists scroll in between,
+	# so the page fits any window however many tracks there are.
 	var margin := MarginContainer.new()
 	add_child(margin)
 	Game.fit_to_safe(margin)
@@ -31,11 +30,16 @@ func _ready() -> void:
 	header.add_child(CoinBadge.new())
 	outer.add_child(header)
 
-	var fit := FitBox.new(1.35) # no scrolling: shrinks the lists if they don't fit, grows them on tall screens
-	outer.add_child(fit)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	outer.add_child(scroll)
+	var center := CenterContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(center)
 	var main: BoxContainer = HBoxContainer.new() if landscape else VBoxContainer.new()
 	main.add_theme_constant_override("separation", 40 if landscape else 16)
-	fit.add_child(main)
+	center.add_child(main)
 
 	# Track records.
 	var tracks := _panel(main)
