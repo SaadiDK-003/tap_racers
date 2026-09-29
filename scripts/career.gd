@@ -4,6 +4,7 @@ extends Control
 ## podium on the one before.
 
 const CoinBadge = preload("res://scripts/coin_badge.gd")
+const SmoothScroll = preload("res://scripts/smooth_scroll.gd")
 const StarRow = preload("res://scripts/star_row.gd")
 const CE = preload("res://scripts/career_events.gd")
 
@@ -40,7 +41,7 @@ func _ready() -> void:
 	outer.add_child(header)
 	outer.add_child(_label("Podium to unlock the next event  •  Win  •  Beat the goal", 17, 4, Color(1, 1, 1, 0.6)))
 
-	var scroll := ScrollContainer.new()
+	var scroll := SmoothScroll.new() # touch: drag anywhere, flick to glide
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	outer.add_child(scroll)

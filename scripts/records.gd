@@ -3,6 +3,7 @@ extends Control
 ## and a few all-time totals.
 
 const CoinBadge = preload("res://scripts/coin_badge.gd")
+const SmoothScroll = preload("res://scripts/smooth_scroll.gd")
 
 
 func _ready() -> void:
@@ -30,7 +31,7 @@ func _ready() -> void:
 	header.add_child(CoinBadge.new())
 	outer.add_child(header)
 
-	var scroll := ScrollContainer.new()
+	var scroll := SmoothScroll.new() # touch: drag anywhere, flick to glide
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	outer.add_child(scroll)
