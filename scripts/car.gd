@@ -497,7 +497,8 @@ func _update_engine() -> void:
 	if engine == null:
 		return
 	var r := speed / TOP_SPEED
-	engine.pitch_scale = 0.55 + r * 1.35
+	var pitch: Array = Sfx.ENGINE_PITCH.get(body, Sfx.ENGINE_PITCH.classic)
+	engine.pitch_scale = pitch[0] + r * pitch[1]
 	engine.volume_db = lerpf(-30.0, -17.0, clampf(r, 0.0, 1.0)) + (2.0 if boosting else 0.0) + engine_gain
 
 

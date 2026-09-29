@@ -33,7 +33,7 @@
 - [x] **Win streak "king":** a crown on the pad of whoever won twice in a row, +15 coins per streak win, and +40 for beating them.
 - [ ] **Race replay:** a slow-motion replay of the best moment (photo finish, rocket hit, splash).
 - [x] **Haptics pass:** vibration for crashes, splashes, hits, landings, nitro and wins (humans only, rate-limited, with a setting). Also a performance pass: the pads' static parts are baked into one texture (draw calls down from ~150 to ~60 a frame), and fonts are pre-rasterized while the race loads.
-- [ ] **Per-body engine sounds:** kart buzz, muscle rumble, hover hum.
+- [x] **Per-body engine sounds:** each body has its own synthesized engine and pitch range (kart buzz, formula whine, muscle rumble, buggy rattle, hover hum), and tapping a body in the garage revs it.
 - [ ] **Weather mid-race:** rain can start partway through a race.
 - [ ] **Shortcut track:** a risky, faster narrow path.
 - [ ] **Moving obstacles:** a train crossing or a rotating bridge on a new track.

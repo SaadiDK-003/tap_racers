@@ -107,7 +107,7 @@ func _ready() -> void:
 		car.boost_started.connect(_on_boost)
 		car.nitro_ready.connect(_on_nitro_ready)
 		if Sfx.enabled:
-			car.engine = Sfx.make_engine()
+			car.engine = Sfx.make_engine(car.body)
 			car.add_child(car.engine)
 			car.engine.play()
 

@@ -28,7 +28,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
   | Winning a Cup | +100 |
   | Daily challenge | +100 |
 
-- **Garage:** tabs for BODY, DECAL and TRAIL, picked separately for each player:
+- **Garage:** tabs for BODY, DECAL and TRAIL, picked separately for each player. Every body has its own engine sound, and tapping one revs it:
   - **Bodies:** Classic, Kart 150, Formula 250, Buggy 300, Muscle 350, Hover 450.
   - **Decals:** Plain, Stripes 60, Number 80, Polka 90, Checker 100, Stars 120, Zigzag 130, Flames 150, Lightning 200.
   - **Speed trails:** Classic, Fire 120, Ice 120, Neon 160, Gold 200, Rainbow 300.

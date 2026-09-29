@@ -232,6 +232,8 @@ func _tile(item: Dictionary, kind: int, look: Array) -> Button:
 
 func _on_tile(item: Dictionary, kind: int) -> void:
 	var id: String = item.id
+	if kind == 0:
+		_rev(id) # hear the engine, even before buying it
 	if not Profile.is_unlocked(id):
 		if not Profile.buy(id, item.price):
 			_message.text = "Need %d more coins - win races to earn them!" % (int(item.price) - Profile.coins())
@@ -244,6 +246,31 @@ func _on_tile(item: Dictionary, kind: int) -> void:
 		Sfx.play(Sfx.lap, -6.0)
 	Profile.equip(_slot, kind, id)
 	_rebuild()
+
+
+var _rev_player: AudioStreamPlayer
+var _rev_tween: Tween
+
+
+## A short rev of a body's engine: up to high revs and back down.
+func _rev(body: String) -> void:
+	if not Sfx.enabled:
+		return
+	if _rev_player == null:
+		_rev_player = AudioStreamPlayer.new()
+		add_child(_rev_player)
+	var pitch: Array = Sfx.ENGINE_PITCH.get(body, Sfx.ENGINE_PITCH.classic)
+	_rev_player.stream = Sfx.engine_for(body)
+	_rev_player.pitch_scale = pitch[0]
+	_rev_player.volume_db = -14.0
+	_rev_player.play()
+	if _rev_tween:
+		_rev_tween.kill()
+	_rev_tween = create_tween()
+	_rev_tween.tween_property(_rev_player, "pitch_scale", pitch[0] + pitch[1] * 0.9, 0.45).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	_rev_tween.tween_property(_rev_player, "pitch_scale", pitch[0] + pitch[1] * 0.2, 0.5).set_ease(Tween.EASE_IN_OUT)
+	_rev_tween.parallel().tween_property(_rev_player, "volume_db", -40.0, 0.5)
+	_rev_tween.tween_callback(_rev_player.stop)
 
 
 func _make_car(slot: int, body: String, decal: String, s: float) -> Car:
