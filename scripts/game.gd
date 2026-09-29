@@ -94,6 +94,7 @@ var debug_shot := ""
 var debug_shot_time := 1.0
 var debug_shot_on := "" # --shot_on=rocket: take the --shot screenshot just after a rocket fires
 var debug_skip_menu := false
+var debug_shower := -1 # --shower (or --shower=LAP): rain rolls in mid-race
 
 
 func _ready() -> void:
@@ -578,6 +579,7 @@ func _parse_debug_args() -> void:
 				debug_reckless = value == "reckless"
 				debug_coast = value == "coast" # lets go before the jump ramp (tests splashes)
 			"race": debug_skip_menu = true
+			"shower": debug_shower = maxi(2, value.to_int()) if value != "" else 2
 			"streak": # --streak=2,3: P2 is king with 3 wins in a row
 				var v := value.split(",")
 				streak_player = v[0].to_int() - 1

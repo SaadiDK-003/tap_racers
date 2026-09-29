@@ -53,7 +53,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 - **WEATHER (RANDOM / CLEAR / RAIN / NIGHT):**
   - **Rain** means less grip in corners, rain streaks, spray behind cars and rain sound.
   - **Night** means a dark track, headlight beams and glowing street lamps.
-  - **Random** is mostly clear, with rain or night about 20% of the time each.
+  - **Random** is mostly clear, with rain or night about 20% of the time each. About 3 in 10 clear races (of 3+ laps) get a **shower** partway through: lightning, thunder and RAIN INCOMING!, then the rain and slippery corners build up over 5 seconds. Winning once it's raining counts as a rain win.
 
 ## Phones
 - **Pads:** on phones they're plain coloured buttons (no key letters), thumb-sized, set in from the screen edges clear of Android's edge-gesture zones, and give a small vibration on every press. With a keyboard they're 30% smaller and show each player's key, so the track gets more of the screen. `--touch` previews the phone layout on desktop.
@@ -138,7 +138,7 @@ Pass these after `--`:
 godot --path . -- --race --players=4 --map=1 --laps=2 --bots
 ```
 - `--players=1 --cpus=3 --cpu_level=2 --races=3` sets up a race against CPUs. `--log` prints lap times, and `--podium` jumps to a sample Cup podium.
-- `--weather=rain` (or `clear` / `night` / `random`) and `--items=off` set the weather and turn power-ups off.
+- `--weather=rain` (or `clear` / `night` / `random`) and `--items=off` set the weather and turn power-ups off. `--shower` (or `--shower=3`) makes rain roll in on lap 2 (or 3); `--shot_on=shower --shot_time=2` screenshots 2 s after it starts.
 - `--menu_panel=setup` (or `settings`) opens that menu panel directly.
 - `--scene=garage` (or `records`; `--garage_tab=2` opens the trail tab) opens that screen directly, and `--coins=500` sets the coin balance for testing.
 - `--streak=2,3` makes P2 the king with 3 wins in a row.

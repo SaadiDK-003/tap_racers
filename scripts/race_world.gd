@@ -90,28 +90,50 @@ func enable_powerups() -> void:
 
 ## Rain: slippery (less grip) under a grey-blue tint. Night: dark, headlights on,
 ## street lamps glowing.
+const RAIN_GRIP := 0.86
+const RAIN_TINT := Color(0.12, 0.16, 0.24, 0.3)
+const NIGHT_TINT := Color(0.02, 0.03, 0.09, 0.62)
+var rain_amount := 0.0 # 0..1: how hard it's raining (a shower fades in)
+
+
 func set_weather(w: String) -> void:
 	weather = w
+	rain_amount = 1.0 if w == "rain" else 0.0
 	for car in cars:
-		car.grip_mult = 0.86 if w == "rain" else 1.0
 		car.night = w == "night"
+	_apply_weather()
+	_lights_layer.queue_redraw()
+
+
+## A shower rolling in mid-race: grip and the grey tint follow the rain's strength.
+func set_rain(amount: float) -> void:
+	amount = clampf(amount, 0.0, 1.0)
+	if weather == "night" or is_equal_approx(amount, rain_amount):
+		return
+	rain_amount = amount
+	weather = "rain" if amount > 0.0 else "clear"
+	_apply_weather()
+
+
+func _apply_weather() -> void:
+	for car in cars:
+		car.grip_mult = lerpf(1.0, RAIN_GRIP, rain_amount)
 	# The bridge deck is drawn above the overlay, so it gets the same colour painted on.
 	var overlay := Color(0, 0, 0, 0)
-	if w == "night":
-		overlay = Color(0.02, 0.03, 0.09, 0.62)
-	elif w == "rain":
-		overlay = Color(0.12, 0.16, 0.24, 0.3)
+	if weather == "night":
+		overlay = NIGHT_TINT
+	elif rain_amount > 0.0:
+		overlay = Color(RAIN_TINT, RAIN_TINT.a * rain_amount)
 	track.set_deck_overlay(overlay)
 	_weather_layer.queue_redraw()
-	_lights_layer.queue_redraw()
 
 
 func _draw_weather(ci: CanvasItem) -> void:
 	var big := Rect2(-4000, -4000, 9000, 9000)
 	if weather == "night":
-		ci.draw_rect(big, Color(0.02, 0.03, 0.09, 0.62)) # keep in sync with set_weather()
-	elif weather == "rain":
-		ci.draw_rect(big, Color(0.12, 0.16, 0.24, 0.3))
+		ci.draw_rect(big, NIGHT_TINT)
+	elif rain_amount > 0.0:
+		ci.draw_rect(big, Color(RAIN_TINT, RAIN_TINT.a * rain_amount))
 
 
 func _draw_night_lights(ci: CanvasItem) -> void:

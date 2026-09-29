@@ -34,7 +34,7 @@
 - [ ] **Race replay:** a slow-motion replay of the best moment (photo finish, rocket hit, splash).
 - [x] **Haptics pass:** vibration for crashes, splashes, hits, landings, nitro and wins (humans only, rate-limited, with a setting). Also a performance pass: the pads' static parts are baked into one texture (draw calls down from ~150 to ~60 a frame), and fonts are pre-rasterized while the race loads.
 - [x] **Per-body engine sounds:** each body has its own synthesized engine and pitch range (kart buzz, formula whine, muscle rumble, buggy rattle, hover hum), and tapping a body in the garage revs it.
-- [ ] **Weather mid-race:** rain can start partway through a race.
+- [x] **Weather mid-race:** in random-weather races, about 3 in 10 clear races get a shower between lap 2 and the second-to-last lap: lightning, thunder, RAIN INCOMING!, then rain, tint and slippery grip build up over 5 seconds.
 - [ ] **Shortcut track:** a risky, faster narrow path.
 - [ ] **Moving obstacles:** a train crossing or a rotating bridge on a new track.
 - [ ] **Second jump track:** a bigger jump with a hill.

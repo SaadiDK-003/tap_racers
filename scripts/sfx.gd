@@ -40,7 +40,7 @@ func _ready() -> void:
 	rain = _make(2.0, _rain, true)
 	pickup = _make(0.35, _pickup)
 	_ambient = AudioStreamPlayer.new()
-	_ambient.volume_db = -16.0
+	_ambient.volume_db = AMBIENT_DB
 	add_child(_ambient)
 	_music_player = AudioStreamPlayer.new()
 	_music_player.volume_db = -13.0
@@ -76,7 +76,16 @@ func play_ambient(stream: AudioStream) -> void:
 		_ambient.stop()
 		return
 	_ambient.stream = stream
+	_ambient.volume_db = AMBIENT_DB
 	_ambient.play()
+
+
+const AMBIENT_DB := -16.0
+
+
+## Ambience volume, 0..1 of normal (a shower fades its rain in).
+func set_ambient_level(level: float) -> void:
+	_ambient.volume_db = AMBIENT_DB + linear_to_db(maxf(level, 0.001))
 
 
 ## Slows the music down (used for the slow-motion photo finish).

@@ -66,6 +66,12 @@ var _was_last: Array[bool] = [] # was last after lap 1 (COMEBACK KID)
 var _weather := "clear"
 # Solo modes.
 var _intro_t := 0.0
+# Mid-race shower.
+const SHOWER_CHANCE := 0.3 # of clear races (random weather only)
+const SHOWER_FADE := 5.0 # seconds for the rain to build up
+var _shower_at := -1.0 # leader's progress when the shower starts (-1: none)
+var _shower_t := -1.0 # seconds since it started (-1: not building up)
+var _rain_layer: RainLayer
 var coach: TutorialCoach
 var trial: TimeTrial
 
@@ -115,11 +121,13 @@ func _ready() -> void:
 	_sub_label.text = world.map.title.to_upper()
 	if weather == "rain":
 		_sub_label.text += "\nRAIN - SLIPPERY CORNERS!"
-		var rain := RainLayer.new()
-		root_ui.add_child(rain)
-		Game.bleed(rain)
-		root_ui.move_child(root_ui.get_child(root_ui.get_child_count() - 1), 0)
+		_add_rain_layer()
 		Sfx.play_ambient(Sfx.rain)
+	elif weather == "clear" and _shower_allowed():
+		# A shower will roll in partway through (somewhere from lap 2 to the second-to-last).
+		var lap: int = Game.debug_shower if Game.debug_shower >= 0 else randi_range(2, Game.race_laps() - 1)
+		lap = clampi(lap, 1, Game.race_laps())
+		_shower_at = (lap - 1 + randf_range(0.25, 0.6)) * world.track.length
 	elif weather == "night":
 		_sub_label.text += "\nNIGHT RACE"
 	if Game.is_championship():
@@ -153,6 +161,56 @@ func _ready() -> void:
 		_lights.modulate.a = 0.0
 		_update_intro(0.0)
 	Sfx.play_music("")
+
+
+func _add_rain_layer() -> void:
+	_rain_layer = RainLayer.new()
+	root_ui.add_child(_rain_layer)
+	Game.bleed(_rain_layer)
+	root_ui.move_child(_rain_layer, 0)
+
+
+func _shower_allowed() -> bool:
+	if Game.debug_shower >= 0:
+		return true
+	if Game.weather_mode != 0 or Game.is_career() or Game.tutorial or Game.is_trial():
+		return false # the player (or the event) picked the weather
+	return Game.race_laps() >= 3 and randf() < SHOWER_CHANCE
+
+
+## Thunder, a warning, then the rain builds up over SHOWER_FADE seconds.
+func _start_shower() -> void:
+	if Game.debug_log:
+		print("SHOWER at %.2fs" % race_time)
+	if Game.debug_shot_on == "shower":
+		Game.debug_capture(Game.debug_shot_time) # --shot_time = seconds after it starts
+	_weather = "rain" # counts as a rain race (STORM CHASER)
+	_flash_rect.color = Color(0.85, 0.9, 1.0, 0.7) # lightning
+	var t := create_tween()
+	t.tween_property(_flash_rect, "color:a", 0.0, 0.12)
+	t.tween_property(_flash_rect, "color:a", 0.45, 0.05)
+	t.tween_property(_flash_rect, "color:a", 0.0, 0.35)
+	Sfx.play(Sfx.crash, -3.0, 0.32) # thunder rumble
+	Game.buzz(90, 0.6)
+	world.shake = maxf(world.shake, 0.15)
+	_flash("RAIN INCOMING!", 1.2, Color(0.6, 0.8, 1.0))
+	for i in mini(Game.num_players, cars.size()):
+		pads.toast(i, "RAIN!", Color(0.6, 0.8, 1.0), "brake earlier")
+	_add_rain_layer()
+	_rain_layer.amount = 0.0
+	Sfx.play_ambient(Sfx.rain)
+	Sfx.set_ambient_level(0.0)
+	_shower_t = 0.0
+
+
+func _update_shower(delta: float) -> void:
+	_shower_t += delta
+	var a := clampf((_shower_t - 1.0) / SHOWER_FADE, 0.0, 1.0)
+	_rain_layer.amount = a
+	Sfx.set_ambient_level(a)
+	world.set_rain(snappedf(a, 0.1)) # in steps: each change re-renders the bridge deck
+	if a >= 1.0:
+		_shower_t = -1.0
 
 
 func _exit_tree() -> void:
@@ -194,6 +252,9 @@ func _process(delta: float) -> void:
 		Phase.RACING:
 			race_time += delta
 			_check_laps()
+			if _shower_at > 0.0 and _standings()[0].progress >= _shower_at:
+				_shower_at = -1.0
+				_start_shower()
 			if _grace > 0.0 and phase == Phase.RACING and not _results_queued:
 				_grace -= delta
 				if not _photo:
@@ -225,9 +286,11 @@ func _process(delta: float) -> void:
 		for car in cars:
 			if cars.size() > 1 and _laps_done(car) >= 1 and places[car.index] == cars.size():
 				_was_last[car.index] = true
+	if _shower_t >= 0.0:
+		_update_shower(delta)
 	if world.weather == "rain":
 		for car in cars:
-			if car.state == Car.State.RACING and car.speed > 350.0 and randf() < delta * 14.0:
+			if car.state == Car.State.RACING and car.speed > 350.0 and randf() < delta * 14.0 * world.rain_amount:
 				var rear: Vector2 = car.position - Vector2.from_angle(car.rotation) * 22.0
 				world.effects.puff(rear, Color(0.8, 0.86, 0.95, 0.3), randf_range(5, 9), Vector2.from_angle(randf() * TAU) * 30.0, 0.5)
 	world.effects.leader = order[0] if (phase == Phase.RACING or phase == Phase.RESULTS) and cars.size() > 1 else null
