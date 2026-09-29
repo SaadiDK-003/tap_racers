@@ -228,11 +228,12 @@ func record_race(race: Dictionary) -> Dictionary:
 		if not car.human:
 			continue
 		var i: int = car.index
-		data.races[i] = int(data.races[i]) + 1
-		data.crashes[i] = int(data.crashes[i]) + int(car.crashes)
+		if not race.get("tournament", false): # 8 tournament entrants, 4 stat colours: skip
+			data.races[i] = int(data.races[i]) + 1
+			data.crashes[i] = int(data.crashes[i]) + int(car.crashes)
+			if car.place == 1:
+				data.wins[i] = int(data.wins[i]) + 1
 		data.perfect_laps = int(data.perfect_laps) + int(car.perfect_laps)
-		if car.place == 1:
-			data.wins[i] = int(data.wins[i]) + 1
 		earned += PLACE_COINS[clampi(car.place - 1, 0, 3)]
 		earned += int(car.perfect_laps) * PERFECT_LAP_COINS + int(car.close_calls) * CLOSE_CALL_COINS
 		# Track record (humans only).

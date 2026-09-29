@@ -340,7 +340,7 @@ func _geom(i: int) -> Dictionary:
 	var fit := minf(1.0, pill_len / (PILL_LEN + 14.0)) if pill_len < PILL_LEN else 1.0
 	if landscape:
 		fit = minf(1.0, (pill_len + 30.0) / PILL_LEN) # the stacked layout needs less length
-	return {"corner": corner, "c": c, "col": Game.PLAYER_COLORS[i], "landscape": landscape, "toward": toward,
+	return {"corner": corner, "c": c, "col": Game.slot_color(i), "landscape": landscape, "toward": toward,
 		"inward": inward, "pill_len": pill_len, "pill_center": pill_center, "rot": _text_rotation(i), "fit": fit}
 
 

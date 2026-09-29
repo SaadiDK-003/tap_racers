@@ -153,7 +153,13 @@ func _build_home() -> void:
 				Game.save_settings()
 				get_tree().change_scene_to_file(target), Vector2(223, 76))
 		grid.add_child(b)
-	right.add_child(_center_wrap(_career_button()))
+	# Career and the tournament side by side (the home screen stays the same height).
+	var modes := HBoxContainer.new()
+	modes.alignment = BoxContainer.ALIGNMENT_CENTER
+	modes.add_theme_constant_override("separation", 14)
+	modes.add_child(_career_button())
+	modes.add_child(_tournament_button())
+	right.add_child(_center_wrap(modes))
 	right.add_child(_center_wrap(grid))
 	right.add_child(_daily_chip())
 	right.add_child(_weekly_chip())
@@ -174,7 +180,7 @@ func _build_home() -> void:
 ## CAREER, with the stars earned so far.
 func _career_button() -> Button:
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(460, 80)
+	b.custom_minimum_size = Vector2(223, 80)
 	b.focus_mode = Control.FOCUS_NONE
 	var gold := Color(1.0, 0.82, 0.2)
 	b.add_theme_stylebox_override("normal", Game.make_style(Color(0.2, 0.15, 0.05, 0.95), 18, gold, 4))
@@ -189,17 +195,43 @@ func _career_button() -> Button:
 	b.add_child(c)
 	var h := HBoxContainer.new()
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	h.add_theme_constant_override("separation", 14)
+	h.add_theme_constant_override("separation", 8)
 	c.add_child(h)
-	var t := _label("CAREER", 32, 8, gold)
+	var t := _label("CAREER", 26, 8, gold)
 	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.add_child(t)
-	var star := StarRow.new(1, 26, 0, 1)
+	var star := StarRow.new(1, 20, 0, 1)
 	star.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(star)
-	var n := _label("%d/%d" % [Profile.career_total(), Game.CareerEvents.count() * 3], 24, 6)
+	var n := _label("%d/%d" % [Profile.career_total(), Game.CareerEvents.count() * 3], 19, 6)
 	n.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.add_child(n)
+	return b
+
+
+## TOURNAMENT: up to 8 friends, heats and a final.
+func _tournament_button() -> Button:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(223, 80)
+	b.focus_mode = Control.FOCUS_NONE
+	var purple := Color(0.72, 0.52, 1.0)
+	b.add_theme_stylebox_override("normal", Game.make_style(Color(0.16, 0.1, 0.26, 0.95), 18, purple, 4))
+	b.add_theme_stylebox_override("hover", Game.make_style(Color(0.22, 0.14, 0.34, 0.95), 18, purple, 4))
+	b.add_theme_stylebox_override("pressed", Game.make_style(Color(0.1, 0.06, 0.18, 0.95), 18, purple, 4))
+	b.pressed.connect(func():
+		Game.save_settings()
+		get_tree().change_scene_to_file("res://scenes/tournament.tscn"))
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_theme_constant_override("separation", -4)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(v)
+	var going := Game.in_tournament()
+	for line in [["TOURNAMENT", 24, purple], ["IN PROGRESS" if going else "up to 8 friends", 15, Color(1, 1, 1, 0.7)]]:
+		var l := _label(line[0], line[1], 6, line[2])
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		v.add_child(l)
 	return b
 
 

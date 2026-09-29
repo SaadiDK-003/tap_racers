@@ -145,6 +145,8 @@ func _ready() -> void:
 		_sub_label.text += "\nKING: %s  •  %d WINS IN A ROW" % [Game.racer_name(king), Game.streak_wins]
 		if Game.num_players > 1:
 			_sub_label.text += "\nBEAT THEM FOR +%d COINS!" % Game.KING_SLAYER_COINS
+	if Game.in_tournament():
+		_sub_label.text = "TOURNAMENT  •  %s\n%s" % [Game.T_STAGES[Game.tournament.stage], _sub_label.text]
 	if Game.weekly:
 		var wc := Game.weekly_challenge()
 		_sub_label.text = "WEEKLY CHALLENGE  •  %s\n%s\n%s" % [wc.rule.name, _sub_label.text, wc.rule.text]
@@ -617,7 +619,7 @@ func _queue_results() -> void:
 
 func _announce_winner(car) -> void:
 	var i: int = car.index
-	var who: String = Game.PLAYER_NAMES[i] if Game.is_cpu(i) else "P%d" % (i + 1)
+	var who: String = Game.short_name(i)
 	_flash("%s WINS!" % who, 1.4, car.color)
 	world.effects.celebrate(car)
 	_cpu_says(car, "win")
@@ -1155,6 +1157,8 @@ func _show_results() -> void:
 		heading = "EVENT %d  •  %s" % [Game.career_event + 1, CE.event(Game.career_event).title]
 	elif Game.weekly:
 		heading = "WEEKLY CHALLENGE  •  %s" % Game.weekly_challenge().rule.name
+	elif Game.in_tournament():
+		heading = "TOURNAMENT  •  %s  •  %s" % [Game.T_STAGES[Game.tournament.stage], heading]
 	box.add_child(_make_label(24, 6, heading))
 	var title := _make_label(52, 10, "%s WINS!" % Game.racer_name(winner.index))
 	title.add_theme_color_override("font_color", winner.color)
@@ -1167,6 +1171,14 @@ func _show_results() -> void:
 		var r := _wrap_label(rewards)
 		r.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
 		box.add_child(r)
+	var t_stage := -1
+	if Game.in_tournament():
+		t_stage = Game.tournament.stage
+		Game.record_tournament_race(order_idx)
+		var msg := "TOP 2 GO THROUGH TO THE FINAL" if t_stage < 2 else "%s IS THE CHAMPION!" % Game.racer_name(winner.index)
+		var m := _wrap_label(msg)
+		m.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+		box.add_child(m)
 	var career_bits := -1
 	if Game.is_career():
 		career_bits = _career_result(order)
@@ -1185,7 +1197,12 @@ func _show_results() -> void:
 		next_fn = func(): get_tree().change_scene_to_file("res://scenes/podium.tscn")
 	var buttons: Array[Button] = []
 	box.add_child(_make_label(8, 0))
-	if Game.weekly:
+	if t_stage >= 0:
+		var to_bracket := _make_button("SEE THE CHAMPION!" if t_stage == 2 else "BACK TO THE BRACKET", func():
+			get_tree().change_scene_to_file("res://scenes/tournament.tscn"), true)
+		box.add_child(to_bracket)
+		buttons.append(to_bracket)
+	elif Game.weekly:
 		var retry := _make_button("RETRY", func():
 			Game.start_weekly()
 			get_tree().reload_current_scene(), order[0] != cars[0])
@@ -1230,7 +1247,9 @@ func _show_results() -> void:
 			row.add_child(b)
 			buttons.append(b)
 		box.add_child(row)
-	var menu := _make_button("CAREER" if career_bits >= 0 else "MENU", _go_menu)
+	var menu := _make_button("CAREER" if career_bits >= 0 else ("QUIT TOURNAMENT" if t_stage >= 0 else "MENU"), func():
+		Game.end_tournament()
+		_go_menu())
 	box.add_child(menu)
 	buttons.append(menu)
 	if Game.is_landscape_layout():
@@ -1277,6 +1296,7 @@ func _record_profile(order: Array) -> String:
 	if finish_order.size() >= 2:
 		margin = finish_order[1].finish_time - finish_order[0].finish_time
 	var race := {"map": world.map.title, "cpus": Game.num_cpus, "cpu_level": Game.cpu_level, "margin": margin,
+		"tournament": Game.in_tournament(),
 		"weather": _weather, "laps": Game.race_laps(), "cars": []}
 	for rank in order.size():
 		var car = order[rank]
@@ -1492,6 +1512,9 @@ func _result_row(rank: int, car, points := -1) -> Control:
 
 func _go_menu() -> void:
 	Game.end_weekly()
+	if Game.in_tournament():
+		get_tree().change_scene_to_file("res://scenes/tournament.tscn")
+		return
 	if Game.is_career():
 		get_tree().change_scene_to_file("res://scenes/career.tscn")
 		return

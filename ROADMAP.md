@@ -38,7 +38,7 @@
 - [x] **Shortcut track:** Quarry Cut: a hairpin with a gravel shortcut right beside it. Reach the fork slowly (below ~520) to turn in. It's about even with using nitro that lap (17.9 s vs 17.4 s over 5 laps), so it's a real choice. CPUs sometimes take it.
 - [x] **Moving obstacles:** Rail Crossing, a track with a level crossing: lights, bell and barriers, then a train sweeps across into a tunnel. Wait, or get knocked off (a shield saves you). CPUs stop for it (Easy ones sometimes chance it).
 - [x] **Second jump track:** Summit Leap, an alpine track with a 190-long ravine taken off a hill crest (the river is 120). You need ~88% of top speed; too slow and you FALL IN. Cars fly higher over a bigger gap.
-- [ ] **Tournament brackets:** up to 8 friends, heats and a final.
+- [x] **Tournament:** 2-8 players (CPU drivers fill up to 8) drawn into two heats of four; the top two of each heat race the final. Each player keeps their own colour and number on the pads; a bracket screen between races shows who's through and which corner or key each player takes next.
 - [x] **Weekly challenge:** one track and one rule a week (NO NITRO, NIGHT RACE, STORM, ROCKET PARTY, MINEFIELD, HARD RIVALS), the same for everyone, from a chip on the home screen. P1 against three CPUs; the first win of the week pays 200 coins, plus the WEEKEND WARRIOR award.
 - [ ] **Shareable ghost codes:** race a friend's best lap.
 
