@@ -378,6 +378,8 @@ func _build_demo() -> void:
 	_demo.effects.set_process(false)
 	for car in _demo.cars:
 		car.effects = null # no smoke, sparks or skid marks to update
+	if _demo.train:
+		_demo.train.quiet = true # no bell or horn under the menu music
 	for car in _demo.cars:
 		car.state = Car.State.RACING
 		car.progress = -22.0 - car.index * 260.0
@@ -394,9 +396,9 @@ func _process(delta: float) -> void:
 	if _demo:
 		var leader = _demo.cars[0]
 		for car in _demo.cars:
-			if car.bot_wants_nitro():
+			if car.bot_wants_nitro() and not _demo.train_ahead(car):
 				car.fire_nitro()
-			car.tick(delta, car.bot_throttle())
+			car.tick(delta, car.bot_throttle() and not _demo.should_wait_for_train(car))
 			if car.progress > leader.progress:
 				leader = car
 		_demo.effects.leader = leader

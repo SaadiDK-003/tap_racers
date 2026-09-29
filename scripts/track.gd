@@ -30,6 +30,7 @@ func setup(map_def, offsets: Array[float]) -> void:
 	_runs = _find_corner_runs()
 	_find_bridge()
 	_find_jump()
+	_find_rail()
 	# Scenery is placed when the track is fitted to the screen (see rebuild_scenery),
 	# since parking lots depend on what's visible. Building it here too was wasted work.
 	_build_visuals()
@@ -202,6 +203,140 @@ func _find_jump() -> void:
 		limits.append(reach)
 	_river_from = -limits[0]
 	_river_to = limits[1]
+
+
+# --- Railway level crossing -------------------------------------------------------
+# The rails run straight across the road (along the road's normal) at _rail_s. Each
+# end either runs off the map or, if another part of the road is in the way, stops
+# at a tunnel portal. Positions along the rails are "t": the same as a lane offset.
+
+const RAIL_HALF := 30.0 # half width of the ballast bed
+const RAIL_REACH := 1400.0 # an end this far out is off the map
+var _rail_s := -1.0
+var rail_from := 0.0 # t of each end (negative side .. positive side)
+var rail_to := 0.0
+var rail_tunnel := [false, false] # [from end, to end]: ends in a tunnel portal
+
+
+func has_rail() -> bool:
+	return _rail_s >= 0.0
+
+
+func rail_s() -> float:
+	return _rail_s
+
+
+func rail_origin() -> Vector2:
+	return point_at(_rail_s, 0.0)
+
+
+## Direction of the rails (+t).
+func rail_dir() -> Vector2:
+	var along := tangent_at(_rail_s)
+	return Vector2(-along.y, along.x)
+
+
+## Signed distance along the road from the crossing (negative: before it).
+func dist_from_rail(s: float) -> float:
+	return fposmod(s - _rail_s + length * 0.5, length) - length * 0.5
+
+
+func _find_rail() -> void:
+	var rp: Vector2 = map.rail_point
+	if not rp.is_finite():
+		return
+	var best := 0
+	for i in _n:
+		if _pos[i].distance_to(rp) < _pos[best].distance_to(rp):
+			best = i
+	_rail_s = best * _step
+	var c := rail_origin()
+	var dir := rail_dir()
+	var ends: Array[float] = []
+	for side in [-1.0, 1.0]:
+		var t: float = map.road_width * 0.5
+		var reach := RAIL_REACH
+		while t < RAIL_REACH:
+			t += 20.0
+			var q: Vector2 = c + dir * side * t
+			var clear := true
+			for i in range(0, _n, 2):
+				var ds := absf(fposmod(i * _step - _rail_s + length * 0.5, length) - length * 0.5)
+				if ds > 260.0 and _pos[i].distance_to(q) < map.road_width * 0.5 + RAIL_HALF + 70.0:
+					clear = false
+					break
+			if not clear:
+				reach = maxf(map.road_width * 0.5 + 60.0, t - 60.0)
+				break
+		ends.append(reach)
+	rail_from = -ends[0]
+	rail_to = ends[1]
+	rail_tunnel = [ends[0] < RAIL_REACH, ends[1] < RAIL_REACH]
+
+
+## Points along the railway (keeps scenery off the rails and the tunnel mound).
+func rail_points() -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if _rail_s < 0.0:
+		return out
+	var c := rail_origin()
+	var dir := rail_dir()
+	var t := rail_from
+	while t <= rail_to:
+		out.append(c + dir * t)
+		t += 40.0
+	return out
+
+
+func _draw_rail(ci: CanvasItem) -> void:
+	if _rail_s < 0.0:
+		return
+	var c := rail_origin()
+	var dir := rail_dir()
+	var along := tangent_at(_rail_s)
+	var road_half: float = map.road_width * 0.5 + 12.0 # road plus curbs
+	var p := func(t: float, a: float) -> Vector2: return c + dir * t + along * a
+	var quad := func(t0: float, t1: float, a0: float, a1: float, col: Color) -> void:
+		ci.draw_colored_polygon(PackedVector2Array([p.call(t0, a0), p.call(t1, a0), p.call(t1, a1), p.call(t0, a1)]), col)
+	# Tunnel mounds under everything else at a blocked end.
+	for k in 2:
+		if rail_tunnel[k]:
+			var te: float = rail_from if k == 0 else rail_to
+			var out_dir := -1.0 if k == 0 else 1.0
+			ci.draw_circle(p.call(te + out_dir * 34.0, 0.0), 70.0, map.ground.darkened(0.28))
+			ci.draw_circle(p.call(te + out_dir * 30.0, 0.0), 58.0, map.ground.darkened(0.16))
+	# Ballast (gravel) and sleepers, off the road; the rails run right across.
+	var gravel := Color(0.5, 0.47, 0.43)
+	var sleeper := Color(0.36, 0.25, 0.17)
+	for seg in [[rail_from, -road_half], [road_half, rail_to]]:
+		if seg[1] <= seg[0]:
+			continue
+		quad.call(seg[0], seg[1], -RAIL_HALF, RAIL_HALF, gravel)
+		var t: float = seg[0] + 8.0
+		while t < seg[1] - 4.0:
+			quad.call(t, t + 8.0, -RAIL_HALF + 6.0, RAIL_HALF - 6.0, sleeper)
+			t += 20.0
+	# Level crossing: dark rubber panels on the road.
+	quad.call(-road_half, road_half, -RAIL_HALF + 4.0, RAIL_HALF - 4.0, map.road.darkened(0.3))
+	for a in [-12.0, 12.0]:
+		ci.draw_line(p.call(rail_from, a), p.call(rail_to, a), Color(0.18, 0.18, 0.2), 5.0)
+		ci.draw_line(p.call(rail_from, a), p.call(rail_to, a), Color(0.72, 0.74, 0.78), 2.5)
+	# Tunnel mouths.
+	for k in 2:
+		if rail_tunnel[k]:
+			var te: float = rail_from if k == 0 else rail_to
+			var out_dir := -1.0 if k == 0 else 1.0
+			quad.call(te - out_dir * 4.0, te + out_dir * 18.0, -RAIL_HALF - 10.0, RAIL_HALF + 10.0, Color(0.42, 0.4, 0.4))
+			quad.call(te, te + out_dir * 22.0, -RAIL_HALF + 2.0, RAIL_HALF - 2.0, Color(0.05, 0.05, 0.07))
+	# Crossbuck signs (white X on a post) on both sides, before the crossing.
+	for side in [-1.0, 1.0]:
+		var q: Vector2 = p.call(side * (road_half + 20.0), -(RAIL_HALF + 26.0))
+		ci.draw_circle(q, 5.0, Color(0.2, 0.2, 0.22))
+		var d1 := Vector2(1, 1).normalized() * 13.0
+		var d2 := Vector2(1, -1).normalized() * 13.0
+		for d in [d1, d2]:
+			ci.draw_line(q - d, q + d, Color(0.1, 0.1, 0.12), 7.0)
+			ci.draw_line(q - d, q + d, Color(0.97, 0.97, 0.95), 4.0)
 
 
 ## River under the gap and striped ramps on either side, painted over the road.
@@ -386,6 +521,7 @@ func _build_visuals() -> void:
 	_add_layer(func(ci): _draw_band(ci, map.road_width, map.road), _bake_root)
 	_add_layer(_draw_details, _bake_root)
 	_add_layer(_draw_jump, _bake_root)
+	_add_layer(_draw_rail, _bake_root)
 	_scenery_layer = _add_layer(func(ci): Scenery.draw_all(ci, _props), _bake_root)
 	_baked = Sprite2D.new()
 	_baked.centered = false

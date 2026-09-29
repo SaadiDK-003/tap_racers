@@ -36,7 +36,7 @@
 - [x] **Per-body engine sounds:** each body has its own synthesized engine and pitch range (kart buzz, formula whine, muscle rumble, buggy rattle, hover hum), and tapping a body in the garage revs it.
 - [x] **Weather mid-race:** in random-weather races, about 3 in 10 clear races get a shower between lap 2 and the second-to-last lap: lightning, thunder, RAIN INCOMING!, then rain, tint and slippery grip build up over 5 seconds.
 - [ ] **Shortcut track:** a risky, faster narrow path.
-- [ ] **Moving obstacles:** a train crossing or a rotating bridge on a new track.
+- [x] **Moving obstacles:** Rail Crossing, a track with a level crossing: lights, bell and barriers, then a train sweeps across into a tunnel. Wait, or get knocked off (a shield saves you). CPUs stop for it (Easy ones sometimes chance it).
 - [ ] **Second jump track:** a bigger jump with a hill.
 - [ ] **Tournament brackets:** up to 8 friends, heats and a final.
 - [ ] **Weekly challenge track** with a rule (no nitro, night only, ...).

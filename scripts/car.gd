@@ -344,6 +344,17 @@ func fire_nitro() -> void:
 	boost_started.emit(self)
 
 
+## Ends a nitro burst early (the rest of the tank is lost). CPU drivers use it to
+## stop for a train.
+func cancel_nitro() -> void:
+	if not boosting:
+		return
+	boosting = false
+	nitro = 0.0
+	nitro_armed = false
+	_grace = NITRO_GRACE
+
+
 func _update_nitro(delta: float, _held: bool) -> void:
 	if state != State.RACING:
 		boosting = false

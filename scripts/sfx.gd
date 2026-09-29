@@ -248,6 +248,40 @@ func _engine(t: float, _d: float) -> float:
 	return _lp * 0.7
 
 
+# --- Train (made on first use) ---
+
+var _train_sounds := {}
+
+
+## Level-crossing bell: two dings per 0.6 s loop (in step with the flashing lights).
+func bell() -> AudioStreamWAV:
+	if not _train_sounds.has("bell"):
+		_train_sounds.bell = _make(0.6, func(t, _d):
+			var k := fmod(t, 0.3)
+			return (sin(TAU * 1320.0 * t) + 0.5 * sin(TAU * 2640.0 * t) + 0.3 * sin(TAU * 1980.0 * t)) * exp(-k * 11.0) * 0.32, true)
+	return _train_sounds.bell
+
+
+func horn() -> AudioStreamWAV:
+	if not _train_sounds.has("horn"):
+		_train_sounds.horn = _make(1.1, func(t, d):
+			var env := minf(1.0, t / 0.05) * minf(1.0, (d - t) / 0.35)
+			var v := 0.4 * _saw(311.0, t) + 0.35 * _saw(370.0, t) + 0.3 * _saw(466.0, t)
+			_lp += (v - _lp) * 0.2
+			return _lp * env * 0.6)
+	return _train_sounds.horn
+
+
+## Rolling train: a low rumble with the clickety-clack of the wheels.
+func rumble() -> AudioStreamWAV:
+	if not _train_sounds.has("rumble"):
+		_train_sounds.rumble = _make(1.0, func(t, _d):
+			var clack := exp(-fmod(t, 1.0 / 6.0) * 40.0)
+			_lp += (_noise() - _lp) * 0.06
+			return _lp * 1.6 + clack * 0.25 * sin(TAU * 180.0 * t), true)
+	return _train_sounds.rumble
+
+
 # Body engines. Every frequency is a multiple of 2 Hz so the 0.5 s loop is seamless.
 
 ## Kart: a buzzy little two-stroke (square-ish, no bass, quick flutter).

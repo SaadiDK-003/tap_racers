@@ -5,6 +5,7 @@ extends Node2D
 const Track = preload("res://scripts/track.gd")
 const Car = preload("res://scripts/car.gd")
 const Effects = preload("res://scripts/effects.gd")
+const Train = preload("res://scripts/train.gd")
 const DrawLayer = preload("res://scripts/draw_layer.gd")
 const Powerups = preload("res://scripts/powerups.gd")
 
@@ -72,6 +73,13 @@ func build(map_def, num_cars: int) -> void:
 		car.place()
 		cars.append(car)
 	effects.cars = cars
+	if track.has_rail():
+		train = Train.new()
+		add_child(train) # above the cars
+		train.setup(track)
+		var sig: Node2D = train.signals_node()
+		add_child(sig)
+		move_child(sig, car_layer.get_index()) # on the road, below the cars
 	effects.z_index = 3 # smoke, tags and the crown above everything, even the bridge
 	add_child(effects)
 
@@ -88,11 +96,44 @@ func enable_powerups() -> void:
 	powerups.cars = cars
 
 
+## Lights flashing and the crossing coming up: no nitro (a boosting car can't brake).
+func train_ahead(car) -> bool:
+	if train == null or not train.active():
+		return false
+	var ahead: float = -track.dist_from_rail(car.progress)
+	return ahead > -track.RAIL_HALF and ahead < 2200.0 # a burst covers ~1800
+
+
+## Computer drivers (CPUs, the menu demo): stop for the train when the car couldn't
+## clear the crossing in time. True = let go (brake) this frame.
+func should_wait_for_train(car) -> bool:
+	if train == null or not train.active():
+		return false
+	var ahead: float = -track.dist_from_rail(car.progress) # to the middle of the rails
+	var line: float = ahead - track.RAIL_HALF - TRAIN_STOP_GAP # to the stop line
+	if line < -TRAIN_STOP_GAP:
+		return false # on or past the rails: get clear
+	var to_road: float = train.time_to_road()
+	var clear_time := (ahead + track.RAIL_HALF + 30.0) / maxf(car.speed, 60.0)
+	if to_road > clear_time + 0.5:
+		return false # plenty of time to cross first
+	var stop_dist: float = car.speed * car.speed / (2.0 * CAR_BRAKING)
+	if car.speed > 120.0 and line < stop_dist + 5.0:
+		return false # too late to stop cleanly: commit (braking now would stop it on the rails)
+	var wait := line < stop_dist + 40.0
+	if wait and car.boosting:
+		car.cancel_nitro() # a boosting car can't brake
+	return wait
+
+
 ## Rain: slippery (less grip) under a grey-blue tint. Night: dark, headlights on,
 ## street lamps glowing.
 const RAIN_GRIP := 0.86
 const RAIN_TINT := Color(0.12, 0.16, 0.24, 0.3)
 const NIGHT_TINT := Color(0.02, 0.03, 0.09, 0.62)
+var train # the level-crossing train (rail tracks only)
+const TRAIN_STOP_GAP := 30.0 # computer drivers stop this far before the rails
+const CAR_BRAKING := 950.0 # how hard a car slows when you let go (measured ~1000-1100)
 var rain_amount := 0.0 # 0..1: how hard it's raining (a shower fades in)
 
 

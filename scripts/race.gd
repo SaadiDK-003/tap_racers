@@ -150,6 +150,10 @@ func _ready() -> void:
 		add_child(trial)
 		trial.setup(self)
 		_sub_label.text = "TIME TRIAL\n" + _sub_label.text
+	if world.train:
+		world.train.set_process(false) # trains run once the race starts
+		world.train.warned.connect(_on_train_warning)
+		world.train.passing.connect(_on_train_passing)
 	# Intro sweep (skipped in tests and the tutorial).
 	var intro := not (Game.debug_bots or Game.debug_log or Game.tutorial or Game.debug_no_intro)
 	if intro:
@@ -161,6 +165,53 @@ func _ready() -> void:
 		_lights.modulate.a = 0.0
 		_update_intro(0.0)
 	Sfx.play_music("")
+
+
+# --- Level-crossing train ---------------------------------------------------------
+
+
+
+func _on_train_warning() -> void:
+	# Heads-up for players heading towards the crossing.
+	for i in mini(Game.num_players, cars.size()):
+		var ahead: float = -world.track.dist_from_rail(cars[i].progress)
+		if ahead > 0.0 and ahead < 900.0:
+			pads.toast(i, "TRAIN!", Color(1.0, 0.35, 0.3), "brake for the crossing")
+
+
+func _on_train_passing() -> void:
+	if Game.debug_log:
+		print("TRAIN at %.2fs" % race_time)
+	if Game.debug_shot_on == "train":
+		Game.debug_capture(Game.debug_shot_time) # --shot_time = seconds after it appears
+
+
+func _check_train_hits() -> void:
+	for car in cars:
+		if car.state != Car.State.RACING or car.airborne:
+			continue
+		if not world.train.hits(car.progress, car.lane_offset):
+			continue
+		if Game.debug_log:
+			print("TRAIN HIT %s at %.2fs (speed %d, from rails %.0f, lane %.0f, head %.0f)" % [_short_name(car.index), race_time, car.speed, world.track.dist_from_rail(car.progress), car.lane_offset, world.train.head])
+		if car.rocket_hit(): # a shield saves you, same as a rocket
+			pads.toast(car.index, "HIT BY THE TRAIN!", Color(1.0, 0.45, 0.2), "wait when the lights flash")
+			_crowd(true)
+			world.shake = maxf(world.shake, 0.35)
+			Game.buzz_for(car.index, 180, 1.0)
+
+
+## Lights flashing and the crossing coming up: no nitro (a boosting car can't brake).
+func _train_ahead(car) -> bool:
+	return world.train_ahead(car)
+
+
+## CPU drivers stop for the train when they couldn't clear the crossing in time.
+## Easy CPUs sometimes chance it anyway (once per train, per driver).
+func _cpu_waits_for_train(car) -> bool:
+	if Game.cpu_level == 0 and world.train and (car.index + world.train.cycle) % 3 == 0:
+		return false
+	return world.should_wait_for_train(car)
 
 
 func _add_rain_layer() -> void:
@@ -272,6 +323,8 @@ func _process(delta: float) -> void:
 		places[car.index] = order.find(car) + 1
 	pads.set_places(places)
 	_call_overtakes(places)
+	if world.train and world.train.state == world.train.State.PASSING:
+		_check_train_hits()
 	if world.powerups and phase == Phase.RACING:
 		# Lap 1 is a clean race: the boxes appear once the leader starts lap 2.
 		if not world.powerups.active and order[0].progress >= world.track.length:
@@ -315,18 +368,24 @@ func _is_held(i: int) -> bool:
 	if Game.debug_coast and world.track.has_jump() and world.track.dist_to_lip(car.progress) < 130.0 and car.speed > 380.0:
 		return false
 	if Game.debug_bots:
-		if car.bot_wants_nitro():
+		if car.bot_wants_nitro() and not _train_ahead(car):
 			car.fire_nitro()
+		if world.train and not Game.debug_reckless and _cpu_waits_for_train(car):
+			return false
 		return Game.debug_reckless or car.bot_throttle()
 	if Game.debug_autopilot and i == 0:
-		if car.bot_wants_nitro():
+		if world.train and _cpu_waits_for_train(car):
+			return false
+		if car.bot_wants_nitro() and not _train_ahead(car):
 			car.fire_nitro()
 		return car.bot_throttle(0.95)
 	if Game.is_cpu(i):
 		if phase != Phase.RACING:
 			return false
+		if world.train and _cpu_waits_for_train(car):
+			return false
 		# Easy CPUs fire nitro as soon as it's ready; the others wait for a straight.
-		if car.nitro_armed and (Game.cpu_level == 0 or car.bot_wants_nitro()):
+		if car.nitro_armed and (Game.cpu_level == 0 or car.bot_wants_nitro()) and not _train_ahead(car):
 			car.fire_nitro()
 		return car.bot_throttle(Game.CPU_SKILL[Game.cpu_level], Game.CPU_TOP[Game.cpu_level])
 	return Input.is_action_pressed(Game.action_name(i)) or pads.is_held(i)
@@ -370,6 +429,8 @@ func _end_intro() -> void:
 
 func _start_race() -> void:
 	phase = Phase.RACING
+	if world.train:
+		world.train.set_process(true)
 	Game.buzz(40, 0.5) # GO!
 	for car in cars:
 		car.state = Car.State.RACING

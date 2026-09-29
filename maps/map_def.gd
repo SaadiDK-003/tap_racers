@@ -28,6 +28,10 @@ var bridge_half := 190.0 # bridge length either side of the crossing
 ## Jump over water: the middle of the water gap (on a straight). INF = no jump.
 var jump_point := Vector2.INF
 
+## Railway level crossing (on a straight): trains cross the road now and then.
+## The rails run off the map on one side and into a tunnel on the other. INF = none.
+var rail_point := Vector2.INF
+
 ## Scenery theme: "city", "forest", "desert", "snow" or "beach" (see scripts/scenery.gd).
 var scenery := "forest"
 var scenery_density := 1.0
