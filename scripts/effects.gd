@@ -214,7 +214,7 @@ func _draw() -> void:
 		for car in cars:
 			draw_set_transform(car.position + Vector2(0, -35).rotated(up), up)
 			draw_rect(Rect2(-16, -9, 32, 18), Color(car.color, 0.95))
-			draw_string(_font, Vector2(-16, 5), "P%d" % (car.index + 1), HORIZONTAL_ALIGNMENT_CENTER, 32, 14, Color(0.05, 0.05, 0.08))
+			draw_string(_font, Vector2(-16, 5), "P%d" % (car.index + 1) if not Game.in_tournament() else ("CPU" if Game.is_cpu(car.index) else Game.short_name(car.index)), HORIZONTAL_ALIGNMENT_CENTER, 32, 14, Color(0.05, 0.05, 0.08))
 	draw_set_transform(Vector2.ZERO)
 
 

@@ -379,12 +379,32 @@ func is_cpu(i: int) -> bool:
 func racer_name(i: int) -> String:
 	if is_cpu(i):
 		return driver(i).name
+	var e := slot_entrant(i)
+	if not e.is_empty():
+		return "P%d %s" % [int(e.id) + 1, e.color_name]
 	return "P%d %s" % [i + 1, PLAYER_NAMES[i]]
 
 
 ## Short name for pop-ups: "P2", or a CPU driver's name.
 func short_name(i: int) -> String:
-	return driver(i).name if is_cpu(i) else "P%d" % (i + 1)
+	if is_cpu(i):
+		return driver(i).name
+	var e := slot_entrant(i)
+	return "P%d" % (int(e.id) + 1 if not e.is_empty() else i + 1)
+
+
+## Colour of the car / pad in slot `i` (a tournament entrant's own colour).
+func slot_color(i: int) -> Color:
+	var e := slot_entrant(i)
+	return e.color if not e.is_empty() else PLAYER_COLORS[i]
+
+
+## Garage look [body, decal, trail] for the human in slot `i`.
+func slot_style(i: int) -> Array:
+	var e := slot_entrant(i)
+	if e.is_empty():
+		return Profile.style(i)
+	return Profile.style(int(e.id)) if int(e.id) < MAX_PLAYERS else ["classic", "none", "color"]
 
 
 ## The CPU personality in slot `i` (the same one for a whole championship).
@@ -399,6 +419,104 @@ func _assign_drivers() -> void:
 	cpu_drivers = []
 	for i in MAX_PLAYERS:
 		cpu_drivers.append(picks[i])
+
+
+# --- Tournament ------------------------------------------------------------------
+# Eight entrants (2-8 humans, CPU drivers fill the rest) are drawn into two heats of
+# four; the top two of each heat race the final. Races use the usual four slots:
+# the humans in a heat take the first slots, and each slot shows its entrant.
+
+const T_SIZE := 8
+const T_NAMES := ["RED", "BLUE", "YELLOW", "GREEN", "PURPLE", "ORANGE", "PINK", "CYAN"]
+const T_COLORS := [
+	Color(1.0, 0.3, 0.3), Color(0.25, 0.64, 1.0), Color(1.0, 0.82, 0.25), Color(0.24, 0.86, 0.52),
+	Color(0.7, 0.45, 1.0), Color(1.0, 0.58, 0.2), Color(1.0, 0.45, 0.75), Color(0.3, 0.9, 0.95),
+]
+const T_STAGES := ["HEAT 1", "HEAT 2", "FINAL"]
+## {humans, laps, level, entrants: [{id, human, name, color_name, color, driver}],
+##  heats: [[ids], [ids]], final: [ids], stage: 0 / 1 / 2 (3 = done), results: {stage: [ids]}}
+var tournament := {}
+var _slots: Array = [] # entrant (Dictionary) in each slot of the current tournament race
+
+
+func in_tournament() -> bool:
+	return not tournament.is_empty()
+
+
+## The entrant in slot `i` of a tournament race, or {} outside one.
+func slot_entrant(i: int) -> Dictionary:
+	return _slots[i] if i < _slots.size() else {}
+
+
+func start_tournament(humans: int, race_laps_count: int, level: int) -> void:
+	_keep_settings()
+	var entrants: Array = []
+	var cpus := Drivers.pick(T_SIZE - humans)
+	for id in T_SIZE:
+		var human := id < humans
+		entrants.append({"id": id, "human": human, "color": T_COLORS[id], "color_name": T_NAMES[id],
+			"name": "P%d %s" % [id + 1, T_NAMES[id]] if human else String(cpus[id - humans].name),
+			"driver": null if human else cpus[id - humans]})
+	var draw: Array = range(T_SIZE)
+	draw.shuffle()
+	tournament = {"humans": humans, "laps": race_laps_count, "level": level, "entrants": entrants,
+		"heats": [draw.slice(0, 4), draw.slice(4, 8)], "final": [], "stage": 0, "results": {}}
+
+
+## Entrant ids racing the current stage.
+func tournament_field() -> Array:
+	var st: int = tournament.stage
+	return tournament.heats[st] if st < 2 else tournament.final
+
+
+## Sets up the next race: the stage's humans take the first slots, CPUs the rest.
+func begin_tournament_race() -> void:
+	var ids: Array = tournament_field()
+	var humans := ids.filter(func(id): return tournament.entrants[id].human)
+	var cpus := ids.filter(func(id): return not tournament.entrants[id].human)
+	humans.sort()
+	_slots = []
+	for id in humans + cpus:
+		_slots.append(tournament.entrants[id])
+	tutorial = false
+	num_players = humans.size()
+	num_cpus = cpus.size()
+	cpu_level = tournament.level
+	laps = tournament.laps
+	races = 1
+	items_on = true
+	weather_mode = 0
+	nitro_off = false
+	debug_item = ""
+	start_cup()
+	cpu_drivers = []
+	for e in _slots:
+		cpu_drivers.append(e.driver if e.driver != null else Drivers.ROSTER[0])
+
+
+## A tournament race finished: `order` = slot indices, winner first.
+func record_tournament_race(order: Array[int]) -> void:
+	var ids: Array = []
+	for slot in order:
+		ids.append(int(_slots[slot].id))
+	var st: int = tournament.stage
+	tournament.results[st] = ids
+	if st < 2:
+		tournament.final.append_array(ids.slice(0, 2))
+	tournament.stage = st + 1 # (the slots stay mapped until the next race: the results show them)
+
+
+func tournament_champion() -> Dictionary:
+	var r: Dictionary = tournament.get("results", {})
+	return tournament.entrants[r[2][0]] if r.has(2) else {}
+
+
+func end_tournament() -> void:
+	if tournament.is_empty():
+		return
+	tournament = {}
+	_slots = []
+	_restore_settings()
 
 
 func is_career() -> bool:
@@ -456,7 +574,7 @@ func _restore_settings() -> void:
 
 ## Career or the weekly challenge: a set-up race, not the player's own settings.
 func is_special() -> bool:
-	return is_career() or weekly
+	return is_career() or weekly or in_tournament()
 
 
 # --- Weekly challenge ------------------------------------------------------------
@@ -665,6 +783,7 @@ func _parse_debug_args() -> void:
 			"race": debug_skip_menu = true
 			"weekly": set_meta("weekly", true) # with --race: race this week's challenge
 			"week": debug_week = value.to_int()
+			"tournament": set_meta("tournament", maxi(2, value.to_int()) if value != "" else 4) # --tournament=N humans: open the bracket
 			"shortcut": debug_shortcut = value
 			"nitro": debug_no_nitro = value == "off"
 			"shower": debug_shower = maxi(2, value.to_int()) if value != "" else 2

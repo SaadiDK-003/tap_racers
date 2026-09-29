@@ -55,12 +55,12 @@ func build(map_def, num_cars: int) -> void:
 	for i in num_cars:
 		var car := Car.new()
 		car.index = i
-		car.color = Game.PLAYER_COLORS[i]
+		car.color = Game.slot_color(i)
 		car.lane_offset = offsets[i]
 		car.track = track
 		car.effects = effects
 		car.scale = Vector2.ONE * clampf(spacing / 36.0, 0.8, 1.0)
-		var look: Array = Profile.style(i)
+		var look: Array = Game.slot_style(i)
 		if Game.is_cpu(i) or random_styles:
 			var bodies: Array = Profile.BODIES
 			var decals: Array = Profile.DECALS
