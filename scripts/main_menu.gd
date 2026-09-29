@@ -14,6 +14,7 @@ var _demo: RaceWorld
 var _sound_button: Button
 var _music_button: Button
 var _vibe_button: Button
+var _replay_button: Button
 var _landscape := false
 var _play_button: Button
 var _summary: Label
@@ -270,6 +271,8 @@ func _build_settings() -> void:
 	_music_button = _menu_button("", _toggle_music, Vector2(380, 70))
 	content.add_child(_center_wrap(_sound_button))
 	content.add_child(_center_wrap(_music_button))
+	_replay_button = _menu_button("", _toggle_replays, Vector2(380, 70))
+	content.add_child(_center_wrap(_replay_button))
 	if Game.is_touch():
 		_vibe_button = _menu_button("", _toggle_vibration, Vector2(380, 70))
 		content.add_child(_center_wrap(_vibe_button))
@@ -503,6 +506,12 @@ func _toggle_music() -> void:
 	_update_sound_button()
 
 
+func _toggle_replays() -> void:
+	Profile.set_setting("replays", not bool(Profile.setting("replays", true)))
+	_update_sound_button()
+	Sfx.play(Sfx.beep)
+
+
 func _toggle_vibration() -> void:
 	Game.vibration = not Game.vibration
 	Game.save_settings()
@@ -511,6 +520,8 @@ func _toggle_vibration() -> void:
 
 
 func _update_sound_button() -> void:
+	if _replay_button:
+		_replay_button.text = "REPLAYS: ON" if bool(Profile.setting("replays", true)) else "REPLAYS: OFF"
 	if _vibe_button:
 		_vibe_button.text = "VIBRATION: ON" if Game.vibration else "VIBRATION: OFF"
 	if _sound_button:

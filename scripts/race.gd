@@ -13,6 +13,7 @@ const TimeTrial = preload("res://scripts/time_trial.gd")
 const StarRow = preload("res://scripts/star_row.gd")
 const FontWarmer = preload("res://scripts/font_warmer.gd")
 const CE = preload("res://scripts/career_events.gd")
+const Replay = preload("res://scripts/replay.gd")
 
 enum Phase { INTRO, COUNTDOWN, RACING, RESULTS }
 
@@ -72,6 +73,10 @@ const SHOWER_FADE := 5.0 # seconds for the rain to build up
 var _shower_at := -1.0 # leader's progress when the shower starts (-1: none)
 var _shower_t := -1.0 # seconds since it started (-1: not building up)
 var _rain_layer: RainLayer
+# Replay of the race's best moment, shown before the results.
+var replay: Replay
+var _replaying := false
+var _skip_replay := false
 var coach: TutorialCoach
 var trial: TimeTrial
 
@@ -150,6 +155,10 @@ func _ready() -> void:
 		add_child(trial)
 		trial.setup(self)
 		_sub_label.text = "TIME TRIAL\n" + _sub_label.text
+	if not (Game.tutorial or Game.is_trial()):
+		replay = Replay.new()
+		add_child(replay)
+		replay.setup(world)
 	if world.train:
 		world.train.set_process(false) # trains run once the race starts
 		world.train.warned.connect(_on_train_warning)
@@ -196,6 +205,7 @@ func _check_train_hits() -> void:
 			print("TRAIN HIT %s at %.2fs (speed %d, from rails %.0f, lane %.0f, head %.0f)" % [_short_name(car.index), race_time, car.speed, world.track.dist_from_rail(car.progress), car.lane_offset, world.train.head])
 		if car.rocket_hit(): # a shield saves you, same as a rocket
 			pads.toast(car.index, "HIT BY THE TRAIN!", Color(1.0, 0.45, 0.2), "wait when the lights flash")
+			_note(95, car, "HIT BY THE TRAIN!")
 			_crowd(true)
 			world.shake = maxf(world.shake, 0.35)
 			Game.buzz_for(car.index, 180, 1.0)
@@ -212,6 +222,90 @@ func _cpu_waits_for_train(car) -> bool:
 	if Game.cpu_level == 0 and world.train and (car.index + world.train.cycle) % 3 == 0:
 		return false
 	return world.should_wait_for_train(car)
+
+
+# --- Replay -------------------------------------------------------------------------
+
+func _note(score: int, car, label: String) -> void:
+	if replay and car != null and phase == Phase.RACING:
+		replay.note(race_time, score, car.index, label)
+
+
+func _fx(kind: String, car) -> void:
+	if replay:
+		replay.fx(race_time, kind, car)
+
+
+func _want_replay() -> bool:
+	if replay == null or not bool(Profile.setting("replays", true)):
+		return false
+	if (Game.debug_bots or Game.debug_log) and Game.debug_shot == "":
+		return false # tests
+	replay.update(race_time, true)
+	return replay.has_clip()
+
+
+## Plays the best moment in slow motion, with cinema bars; any tap skips it.
+func _play_replay() -> void:
+	_replaying = true
+	_skip_replay = false
+	var ui := Control.new()
+	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root_ui.add_child(ui)
+	Game.bleed(ui)
+	for top in [true, false]:
+		var bar := ColorRect.new()
+		bar.color = Color(0, 0, 0, 0.85)
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE if top else Control.PRESET_BOTTOM_WIDE)
+		bar.custom_minimum_size.y = 64.0 + (Game.safe_insets().y if top else Game.safe_insets().w)
+		ui.add_child(bar)
+		if not top:
+			bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	var head := _make_label(30, 8, "●  REPLAY  •  " + String(replay.clip.label))
+	head.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3))
+	head.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	head.position.y = Game.safe_insets().y + 14.0
+	ui.add_child(head)
+	head.position.x = (ui.size.x - head.size.x) * 0.5
+	var hint := _make_label(18, 4, "TAP TO SKIP")
+	hint.modulate.a = 0.7
+	hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	ui.add_child(hint)
+	hint.position = Vector2((ui.size.x - hint.size.x) * 0.5, ui.size.y - Game.safe_insets().w - 44.0)
+	ui.modulate.a = 0.0
+	create_tween().tween_property(ui, "modulate:a", 1.0, 0.2)
+	_confetti.visible = false # the finish's confetti isn't part of the replay
+	Engine.time_scale = Replay.SPEED
+	Sfx.set_music_pitch(0.85)
+	replay.start()
+	if Game.debug_shot_on == "replay":
+		Game.debug_capture(Game.debug_shot_time) # --shot_time = seconds into the replay
+	var elapsed := 0.0
+	while true:
+		await get_tree().process_frame
+		var d := get_process_delta_time()
+		elapsed += d
+		if _skip_replay and elapsed > 0.3:
+			break
+		if not replay.step(d):
+			break
+	replay.stop()
+	_confetti.visible = true
+	Engine.time_scale = 1.0
+	Sfx.set_music_pitch(_music_pitch)
+	ui.queue_free()
+	_replaying = false
+
+
+func _input(event: InputEvent) -> void:
+	if not _replaying:
+		return
+	if (event is InputEventScreenTouch and event.pressed) or (event is InputEventKey and event.pressed and not event.echo) \
+			or (event is InputEventMouseButton and event.pressed):
+		_skip_replay = true
+		get_viewport().set_input_as_handled()
 
 
 func _add_rain_layer() -> void:
@@ -281,7 +375,7 @@ func _fit_world() -> void:
 
 
 func _process(delta: float) -> void:
-	if _paused:
+	if _paused or _replaying:
 		return
 	match phase:
 		Phase.INTRO:
@@ -302,6 +396,9 @@ func _process(delta: float) -> void:
 				_start_race()
 		Phase.RACING:
 			race_time += delta
+			if replay:
+				replay.record(race_time)
+				replay.update(race_time)
 			_check_laps()
 			if _shower_at > 0.0 and _standings()[0].progress >= _shower_at:
 				_shower_at = -1.0
@@ -540,6 +637,8 @@ func _call_overtakes(places: Array[int]) -> void:
 		_last_callout[i] = race_time
 		if place == 1:
 			pads.toast(i, "TOOK THE LEAD!", Color(1.0, 0.85, 0.2))
+			if _laps_done(car) == Game.race_laps() - 1:
+				_note(75, car, "LAST-LAP LEAD CHANGE!")
 			_crowd()
 			_cpu_says(car, "lead", 0.7)
 		else:
@@ -663,14 +762,21 @@ func _on_pickup(car, item: String) -> void:
 			pads.toast(i, "MEGA NITRO!", Car.NITRO_COLOR, "" if Game.is_cpu(i) else "DOUBLE-TAP!")
 		"lightning":
 			var zapped := 0
+			var first_zapped = null
 			for c in world.powerups.cars_ahead(car):
 				world.effects.bolt(c)
+				if replay:
+					replay.fx(race_time, "bolt", c)
 				if c.zap():
+					if first_zapped == null:
+						first_zapped = c
 					zapped += 1
 					_cpu_says(c, "hit", 0.5)
 					pads.toast(c.index, "ZAPPED!", Color(1.0, 0.9, 0.3), "by " + _short_name(i))
 					Game.buzz_for(c.index, 90, 0.7)
 			pads.toast(i, "LIGHTNING!", Color(1.0, 0.9, 0.3), "zapped %d car%s" % [zapped, "" if zapped == 1 else "s"])
+			if zapped >= 2:
+				_note(60, first_zapped, "LIGHTNING!")
 			_flash_rect.color = Color(1, 1, 0.85, 0.35)
 			create_tween().tween_property(_flash_rect, "color:a", 0.0, 0.3)
 			Sfx.play(Sfx.crash, -4.0, 1.7)
@@ -692,6 +798,7 @@ func _on_mine_hit(target, owner) -> void:
 		_crowd(true)
 		Game.buzz_for(target.index, 150, 1.0)
 		pads.toast(target.index, "MINE!", Color(1.0, 0.45, 0.2), "dropped by " + _short_name(owner.index))
+		_note(65, target, "MINE!")
 		pads.toast(owner.index, "MINE HIT!", Color(1.0, 0.85, 0.2), _short_name(target.index) + " went boom")
 		_rocket_hits[owner.index] += 1
 	else:
@@ -710,6 +817,7 @@ func _on_rocket_hit(target, shooter) -> void:
 		_crowd(true)
 		Game.buzz_for(target.index, 150, 1.0)
 		pads.toast(target.index, "BOOM!", Color(1.0, 0.45, 0.2), "hit by " + _short_name(shooter.index))
+		_note(85 if _standings()[0] == target else 70, target, "ROCKET HIT!")
 		pads.toast(shooter.index, "DIRECT HIT!", Color(1.0, 0.85, 0.2))
 		_rocket_hits[shooter.index] += 1
 	else:
@@ -771,10 +879,12 @@ func _on_jumped(car, big: bool) -> void:
 	if big:
 		pads.toast(car.index, "BIG AIR!", Color(0.5, 0.9, 1.0))
 		_crowd()
+		_note(55, car, "BIG AIR!")
 	_cpu_says(car, "jump", 0.25)
 
 
 func _on_landed(car) -> void:
+	_fx("land", car)
 	Sfx.play(Sfx.crash, -16.0, 1.9)
 	world.effects.land_dust(car.position)
 	world.shake = maxf(world.shake, 0.06)
@@ -787,6 +897,8 @@ func _on_splashed(car) -> void:
 	if Game.debug_shot_on == "splash":
 		Game.debug_capture(0.25)
 	world.effects.splash(car.position)
+	_fx("splash", car)
+	_note(60, car, "SPLASH!")
 	Sfx.play(Sfx.crash, -4.0, 0.55)
 	Sfx.play(Sfx.boost, -8.0, 0.5) # whoosh of water
 	pads.toast(car.index, "SPLASH!", Color(0.45, 0.8, 1.0), "too slow for the jump")
@@ -799,6 +911,7 @@ func _on_crash(car) -> void:
 	if Game.debug_perf:
 		print("CRASH at %.2fs" % (Time.get_ticks_msec() / 1000.0))
 	_cpu_says(car, "crash", 0.5)
+	_fx("crash", car)
 	if coach:
 		coach.on_crash()
 	world.shake = 0.28
@@ -809,6 +922,7 @@ func _on_crash(car) -> void:
 
 func _on_boost(car) -> void:
 	_nitros[car.index] += 1
+	_fx("nitro", car)
 	if coach:
 		coach.on_boost()
 	if Game.debug_bots:
@@ -995,6 +1109,8 @@ func _show_results() -> void:
 	pads.visible = false
 	_big_label.text = ""
 	_sub_label.text = ""
+	if _want_replay():
+		await _play_replay()
 
 	if coach:
 		_show_solo_results(true)
