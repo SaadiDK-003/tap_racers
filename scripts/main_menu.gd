@@ -6,6 +6,7 @@ const RaceWorld = preload("res://scripts/race_world.gd")
 const Car = preload("res://scripts/car.gd")
 const CoinBadge = preload("res://scripts/coin_badge.gd")
 const StarRow = preload("res://scripts/star_row.gd")
+const FitBox = preload("res://scripts/fit_box.gd")
 
 var _controls_box: VBoxContainer
 var _cpu_buttons: Array[Button] = []
@@ -92,7 +93,7 @@ func _place_badge() -> void:
 ## Home: title, PLAY, a one-line summary of the race settings, RACE SETUP, four
 ## menu buttons and the daily challenge. Options live in the setup panel.
 func _build_home() -> void:
-	var center := CenterContainer.new()
+	var center := FitBox.new() # shrinks the home screen if a window is ever too small
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 	Game.fit_to_safe(center)
@@ -287,7 +288,7 @@ func _panel_overlay() -> VBoxContainer:
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.visible = false
 	add_child(overlay)
-	var center := CenterContainer.new()
+	var center := FitBox.new(1.25) # grows on roomy screens, shrinks on small ones
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
 	Game.fit_to_safe(center)

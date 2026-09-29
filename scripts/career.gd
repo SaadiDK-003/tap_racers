@@ -4,6 +4,7 @@ extends Control
 ## podium on the one before.
 
 const CoinBadge = preload("res://scripts/coin_badge.gd")
+const FitBox = preload("res://scripts/fit_box.gd")
 const StarRow = preload("res://scripts/star_row.gd")
 const CE = preload("res://scripts/career_events.gd")
 
@@ -40,28 +41,16 @@ func _ready() -> void:
 	outer.add_child(header)
 	outer.add_child(_label("Podium to unlock the next event  •  Win  •  Beat the goal", 17, 4, Color(1, 1, 1, 0.6)))
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	outer.add_child(scroll)
-	var center := CenterContainer.new()
-	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(center)
+	var fit := FitBox.new() # all ten events on screen, no scrolling
+	outer.add_child(fit)
 	var landscape := Game.is_landscape_layout()
 	var grid := GridContainer.new()
 	grid.columns = 2 if landscape else 1
 	grid.add_theme_constant_override("h_separation", 14)
-	grid.add_theme_constant_override("v_separation", 10)
-	center.add_child(grid)
-	var focus_card: Control = null
+	grid.add_theme_constant_override("v_separation", 8)
+	fit.add_child(grid)
 	for i in CE.count():
-		var card := _card(i)
-		grid.add_child(card)
-		if Profile.career_unlocked(i):
-			focus_card = card # the furthest open event
-	if focus_card:
-		# Scroll so the newest open event is in view.
-		(func(): scroll.ensure_control_visible(focus_card)).call_deferred()
+		grid.add_child(_card(i))
 
 	var back := Button.new()
 	back.text = "BACK"
@@ -82,7 +71,7 @@ func _card(i: int) -> Control:
 	var final := i == CE.count() - 1
 	var b := Button.new()
 	b.focus_mode = Control.FOCUS_NONE
-	b.custom_minimum_size = Vector2(560 if Game.is_landscape_layout() else 660, 112)
+	b.custom_minimum_size = Vector2(560 if Game.is_landscape_layout() else 660, 100)
 	b.disabled = not open
 	var edge := Color(1.0, 0.45, 0.2) if final else Color(0.3, 0.34, 0.42)
 	for st in ["normal", "hover", "pressed", "disabled"]:
@@ -119,7 +108,7 @@ func _card(i: int) -> Control:
 	v.add_theme_constant_override("separation", 0)
 	h.add_child(v)
 	var dim := 1.0 if open else 0.35
-	var t := _label(e.title, 25, 6, Color(1, 1, 1, dim))
+	var t := _label(e.title, 23, 6, Color(1, 1, 1, dim))
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	v.add_child(t)
 	if not open:

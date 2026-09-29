@@ -4,6 +4,7 @@ extends Control
 
 const Car = preload("res://scripts/car.gd")
 const CoinBadge = preload("res://scripts/coin_badge.gd")
+const FitBox = preload("res://scripts/fit_box.gd")
 
 const OUTLINE := Color(0.02, 0.03, 0.05)
 
@@ -28,7 +29,8 @@ func _ready() -> void:
 	add_child(bg)
 	var landscape := Game.is_landscape_layout()
 
-	var center := CenterContainer.new()
+	# Fits any screen: grows on tall phones, shrinks if a screen is ever too small.
+	var center := FitBox.new(1.3)
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	Game.fit_to_safe(center)
 	add_child(center)

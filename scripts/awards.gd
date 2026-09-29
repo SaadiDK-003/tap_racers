@@ -2,6 +2,7 @@ extends Control
 ## Awards: every achievement with how to earn it, its coin reward and whether it's done.
 
 const CoinBadge = preload("res://scripts/coin_badge.gd")
+const FitBox = preload("res://scripts/fit_box.gd")
 
 
 func _ready() -> void:
@@ -16,10 +17,10 @@ func _ready() -> void:
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	Game.fit_to_safe(margin)
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 20)
+		margin.add_theme_constant_override("margin_" + side, 16)
 	add_child(margin)
 	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 12)
+	outer.add_theme_constant_override("separation", 10)
 	margin.add_child(outer)
 
 	var header := HBoxContainer.new()
@@ -34,18 +35,14 @@ func _ready() -> void:
 	header.add_child(CoinBadge.new())
 	outer.add_child(header)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	outer.add_child(scroll)
-	var center := CenterContainer.new()
-	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(center)
+	# No scrolling: the list is laid out compactly and FitBox shrinks it if needed.
+	var fit := FitBox.new()
+	outer.add_child(fit)
 	var grid := GridContainer.new()
 	grid.columns = 2 if landscape else 1
 	grid.add_theme_constant_override("h_separation", 12)
-	grid.add_theme_constant_override("v_separation", 10)
-	center.add_child(grid)
+	grid.add_theme_constant_override("v_separation", 6)
+	fit.add_child(grid)
 	for a in Profile.ACHIEVEMENTS:
 		grid.add_child(_card(a))
 
@@ -64,10 +61,10 @@ func _card(a: Array) -> Control:
 	var col := Color(1.0, 0.8, 0.25) if got else Color(0.5, 0.52, 0.6)
 	var card := PanelContainer.new()
 	var style := Game.make_style(Color(col, 0.14 if got else 0.06), 14, Color(col, 0.8 if got else 0.25), 3)
-	style.content_margin_top = 6
-	style.content_margin_bottom = 6
+	style.content_margin_top = 3
+	style.content_margin_bottom = 3
 	card.add_theme_stylebox_override("panel", style)
-	card.custom_minimum_size = Vector2(560, 0)
+	card.custom_minimum_size = Vector2(600 if Game.is_landscape_layout() else 660, 0)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 12)
 	card.add_child(h)
@@ -80,10 +77,10 @@ func _card(a: Array) -> Control:
 	v.add_theme_constant_override("separation", 0)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(v)
-	var name_l := _label(a[1], 21, 4, Color.WHITE if got else Color(1, 1, 1, 0.75))
+	var name_l := _label(a[1], 19, 4, Color.WHITE if got else Color(1, 1, 1, 0.75))
 	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	v.add_child(name_l)
-	var desc := _label(a[2], 16, 2, Color(1, 1, 1, 0.6))
+	var desc := _label(a[2], 15, 2, Color(1, 1, 1, 0.6))
 	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	v.add_child(desc)
 	var reward := _label("DONE" if got else "+%d" % int(a[3]), 20, 4, Color(0.5, 1.0, 0.6) if got else Color(1.0, 0.85, 0.4))

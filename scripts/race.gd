@@ -12,6 +12,7 @@ const TutorialCoach = preload("res://scripts/tutorial_coach.gd")
 const TimeTrial = preload("res://scripts/time_trial.gd")
 const StarRow = preload("res://scripts/star_row.gd")
 const FontWarmer = preload("res://scripts/font_warmer.gd")
+const FitBox = preload("res://scripts/fit_box.gd")
 const CE = preload("res://scripts/career_events.gd")
 
 enum Phase { INTRO, COUNTDOWN, RACING, RESULTS }
@@ -725,6 +726,12 @@ func _flash(text: String, time: float, color := Color.WHITE) -> void:
 
 
 func _pop(node: Control, amount: float) -> void:
+	var fit := node.get_parent() as FitBox
+	if fit:
+		# The fit box owns this node's scale (it may be shrunk to fit): pop through it.
+		fit.pop = amount
+		create_tween().tween_property(fit, "pop", 1.0, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		return
 	node.scale = Vector2(amount, amount)
 	create_tween().tween_property(node, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
@@ -837,7 +844,7 @@ func _make_overlay(root: Control) -> Control:
 	overlay.visible = false
 	root.add_child(overlay)
 	Game.bleed(overlay) # dim the whole screen...
-	var center := CenterContainer.new()
+	var center := FitBox.new() # centred, and shrunk if the panel would not fit
 	overlay.add_child(center)
 	Game.fit_to_safe(center) # ...but keep the panel in the safe area
 	var panel := PanelContainer.new()
