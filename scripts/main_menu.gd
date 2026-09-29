@@ -44,6 +44,11 @@ func _ready() -> void:
 		return
 	if Game.debug_skip_menu:
 		Game.debug_skip_menu = false
+		if Game.has_meta("weekly"):
+			Game.remove_meta("weekly")
+			Game.start_weekly()
+			get_tree().change_scene_to_file.call_deferred("res://scenes/race.tscn")
+			return
 		if Game.has_meta("career"):
 			Game.start_career(clampi(Game.get_meta("career"), 0, Game.CareerEvents.count() - 1))
 			Game.remove_meta("career")
@@ -151,6 +156,7 @@ func _build_home() -> void:
 	right.add_child(_center_wrap(_career_button()))
 	right.add_child(_center_wrap(grid))
 	right.add_child(_daily_chip())
+	right.add_child(_weekly_chip())
 
 	# Settings gear in the top-left corner (the coin counter sits top-right).
 	var gear := Button.new()
@@ -445,6 +451,41 @@ func _offer_tutorial() -> void:
 	skip.custom_minimum_size = Vector2(420, 64)
 	skip.pressed.connect(func(): Profile.set_setting("tutorial_offered", true); overlay.queue_free())
 	v.add_child(skip)
+
+
+## This week's challenge: track, rule, reward and days left. Tap to race it.
+func _weekly_chip() -> Control:
+	var c := Game.weekly_challenge()
+	var won := Profile.weekly_won()
+	var col := Color(0.4, 0.9, 0.5) if won else Color(0.55, 0.75, 1.0)
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(460, 0)
+	for st in ["normal", "hover", "pressed"]:
+		var bg := Color(col, 0.14 if st == "normal" else (0.24 if st == "hover" else 0.08))
+		var style := Game.make_style(bg, 14, Color(col, 0.8), 3)
+		style.content_margin_top = 6
+		style.content_margin_bottom = 6
+		b.add_theme_stylebox_override(st, style)
+	b.pressed.connect(func():
+		Game.save_settings()
+		Game.start_weekly()
+		get_tree().change_scene_to_file("res://scenes/race.tscn"))
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(v)
+	var top := "WEEKLY CHALLENGE  •  %s" % ("WON!" if won else "+%d COINS" % Game.WEEKLY_COINS)
+	var days := "last day!" if c.days_left <= 1 else "%d days left" % c.days_left
+	for line in [[top, 16, col], ["%s  •  %s" % [String(c.title).to_upper(), c.rule.name], 21, Color.WHITE], ["%s  •  %s  •  TAP TO RACE" % [c.rule.text, days], 14, Color(1, 1, 1, 0.65)]]:
+		var l := _label(line[0], line[1], 4, line[2])
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		v.add_child(l)
+	# The button sizes itself to its labels.
+	b.custom_minimum_size.y = 84
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	return b
 
 
 func _daily_chip() -> Control:

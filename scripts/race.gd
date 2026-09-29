@@ -141,10 +141,13 @@ func _ready() -> void:
 	if Game.is_championship():
 		_sub_label.text = "RACE %d OF %d\n%s" % [Game.cup_race + 1, Game.races, _sub_label.text]
 	var king := Game.king()
-	if king >= 0 and king < cars.size() and not Game.is_career():
+	if king >= 0 and king < cars.size() and not Game.is_special():
 		_sub_label.text += "\nKING: %s  •  %d WINS IN A ROW" % [Game.racer_name(king), Game.streak_wins]
 		if Game.num_players > 1:
 			_sub_label.text += "\nBEAT THEM FOR +%d COINS!" % Game.KING_SLAYER_COINS
+	if Game.weekly:
+		var wc := Game.weekly_challenge()
+		_sub_label.text = "WEEKLY CHALLENGE  •  %s\n%s\n%s" % [wc.rule.name, _sub_label.text, wc.rule.text]
 	if Game.is_career():
 		var e: Dictionary = CE.event(Game.career_event)
 		_sub_label.text = "EVENT %d  •  %s\n%s\nGOAL: %s" % [Game.career_event + 1, e.title, _sub_label.text, CE.goal_text(Game.career_event)]
@@ -321,7 +324,7 @@ func _add_rain_layer() -> void:
 func _shower_allowed() -> bool:
 	if Game.debug_shower >= 0:
 		return true
-	if Game.weather_mode != 0 or Game.is_career() or Game.tutorial or Game.is_trial():
+	if Game.weather_mode != 0 or Game.is_special() or Game.tutorial or Game.is_trial():
 		return false # the player (or the event) picked the weather
 	return Game.race_laps() >= 3 and randf() < SHOWER_CHANCE
 
@@ -1002,7 +1005,7 @@ func _build_ui() -> void:
 	pads.num_players = cars.size()
 	pads.humans = mini(Game.num_players, cars.size()) if not Game.debug_bots else 0
 	pads.laps = Game.race_laps()
-	pads.king = Game.king() if not Game.is_career() else -1
+	pads.king = Game.king() if not Game.is_special() else -1
 	pads.king_wins = Game.streak_wins
 	pads.cars = cars
 	pads.track_length = world.track.length
@@ -1150,6 +1153,8 @@ func _show_results() -> void:
 		heading = "RACE %d OF %d  •  %s" % [Game.cup_race, Game.races, heading]
 	elif Game.is_career():
 		heading = "EVENT %d  •  %s" % [Game.career_event + 1, CE.event(Game.career_event).title]
+	elif Game.weekly:
+		heading = "WEEKLY CHALLENGE  •  %s" % Game.weekly_challenge().rule.name
 	box.add_child(_make_label(24, 6, heading))
 	var title := _make_label(52, 10, "%s WINS!" % Game.racer_name(winner.index))
 	title.add_theme_color_override("font_color", winner.color)
@@ -1165,6 +1170,8 @@ func _show_results() -> void:
 	var career_bits := -1
 	if Game.is_career():
 		career_bits = _career_result(order)
+	if Game.weekly:
+		_weekly_result(order)
 	for rank in order.size():
 		box.add_child(_result_row(rank, order[rank], given[order[rank].index] if cup else -1))
 
@@ -1178,7 +1185,13 @@ func _show_results() -> void:
 		next_fn = func(): get_tree().change_scene_to_file("res://scenes/podium.tscn")
 	var buttons: Array[Button] = []
 	box.add_child(_make_label(8, 0))
-	if career_bits >= 0:
+	if Game.weekly:
+		var retry := _make_button("RETRY", func():
+			Game.start_weekly()
+			get_tree().reload_current_scene(), order[0] != cars[0])
+		box.add_child(retry)
+		buttons.append(retry)
+	elif career_bits >= 0:
 		# Career: NEXT EVENT once it's unlocked, RETRY, and back to the ladder.
 		var ev := Game.career_event
 		var row := HBoxContainer.new()
@@ -1338,6 +1351,29 @@ func _career_result(order: Array) -> int:
 	return bits
 
 
+## Weekly challenge: pays out for P1's first win of the week.
+func _weekly_result(order: Array) -> void:
+	var place: int = order.find(cars[0]) + 1
+	var coins := Profile.record_weekly(place) if not Game.debug_bots else 0
+	var msg: String
+	var col := Color(1.0, 0.85, 0.4)
+	if coins > 0:
+		msg = "WEEKLY CHALLENGE WON!  +%d COINS" % coins
+	elif place == 1:
+		msg = "WEEKLY CHALLENGE WON AGAIN!"
+	else:
+		msg = "Win it for +%d coins - a new challenge every Monday" % Game.WEEKLY_COINS
+		col = Color(1, 0.6, 0.5)
+	var m := _wrap_label(msg)
+	m.add_theme_color_override("font_color", col)
+	_results_box.add_child(m)
+	var awards := Profile.take_recent_achievements()
+	if not awards.is_empty():
+		var a := _wrap_label(("NEW AWARD: " if awards.size() == 1 else "NEW AWARDS: ") + ", ".join(awards))
+		a.add_theme_color_override("font_color", Color(1.0, 0.85, 0.4))
+		_results_box.add_child(a)
+
+
 ## Results for the tutorial and the time trial (just P1).
 func _show_solo_results(is_tutorial: bool) -> void:
 	var car = cars[0]
@@ -1455,6 +1491,7 @@ func _result_row(rank: int, car, points := -1) -> Control:
 
 
 func _go_menu() -> void:
+	Game.end_weekly()
 	if Game.is_career():
 		get_tree().change_scene_to_file("res://scenes/career.tscn")
 		return

@@ -62,6 +62,7 @@ const ACHIEVEMENTS := [
 	["stylish", "STYLE ICON", "Unlock 3 garage items", 30],
 	["career", "CAREER STAR", "Win Blaze's Final in career mode", 150],
 	["superstar", "SUPERSTAR", "Earn every star in career mode", 200],
+	["weekly", "WEEKEND WARRIOR", "Win a weekly challenge", 80],
 ]
 
 var data := {}
@@ -90,6 +91,7 @@ func _defaults() -> Dictionary:
 		"map_wins": {}, # map title -> human wins there
 		"settings": {},
 		"career": [], # stars bitmask per career event
+		"weekly": {}, # {week, won}
 	}
 
 
@@ -360,6 +362,25 @@ func record_career(i: int, bits: int) -> Dictionary:
 		unlock("superstar")
 	save()
 	return {"new": fresh, "coins": coins}
+
+
+# --- Weekly challenge ------------------------------------------------------------------
+
+func weekly_won() -> bool:
+	var w: Dictionary = data.get("weekly", {})
+	return int(w.get("week", -1)) == Game.week_number() and bool(w.get("won", false))
+
+
+## A weekly challenge race finished in `place`; returns the coins paid (first win of
+## the week only).
+func record_weekly(place: int) -> int:
+	if place != 1 or weekly_won():
+		return 0
+	data.weekly = {"week": Game.week_number(), "won": true}
+	add_coins(Game.WEEKLY_COINS)
+	unlock("weekly")
+	save()
+	return Game.WEEKLY_COINS
 
 
 # --- Tutorial and time trial -------------------------------------------------------

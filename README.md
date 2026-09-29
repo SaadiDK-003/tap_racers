@@ -11,6 +11,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 - **Players and CPU rivals:** 1–4 human players, with CPU rivals filling the grid up to 4 cars. A single player always gets at least one CPU. CPU level is Easy, Normal or Hard.
 - **Career:** 10 solo events on set tracks against named CPU rivals, from Rookie Run (Easy) to Blaze's Final (Hard, 6 laps). Each event has fixed laps, weather and items, and pays up to 3 stars: a podium finish (which unlocks the next event), a win, and the event's goal (e.g. no crashes, 3 nitros, 3 close calls, an item hit, a perfect lap, or winning by 2 seconds). Every new star pays 25 coins. Your own race settings come back when you leave career.
 - **Win streak king:** a human who wins 2 races in a row becomes KING, with a crown and win count on their pad, and the start banner names them. Each further win pays the king 15 coins, and another human who beats the king gets 40. A CPU win ends the streak. It carries over REMATCH, NEW TRACK and Cup races, and resets on the main menu.
+- **Weekly challenge:** a chip on the home screen shows this week's track and rule (the same for everyone, new every Monday): NO NITRO, NIGHT RACE, STORM, ROCKET PARTY (every box is a rocket), MINEFIELD (every box is mines) or HARD RIVALS. Tap it to race P1 against three CPUs. The first win of the week pays 200 coins (and the WEEKEND WARRIOR award); retry as often as you like. Your own race settings come back afterwards.
 - **Replay:** after the finish, the race's best moment plays back in slow motion before the results, zoomed in on the action: a train or rocket hit, a mine, a double lightning strike, a splash, big air or a last-lap lead change. Tap to skip, or turn REPLAYS off in Settings.
 - **Rematch:** after a single race, REMATCH replays the same track, and NEW TRACK picks a random one.
 - **Races:** *Single* race, or a *Cup* of 3 or 5 races on random tracks with no repeats. Points are 10 / 6 / 3 / 1, and standings show after each race. The Cup ends on a podium with a trophy.
@@ -148,6 +149,7 @@ godot --path . -- --race --players=4 --map=1 --laps=2 --bots
 - `--scene=garage` (or `records`; `--garage_tab=2` opens the trail tab) opens that screen directly, and `--coins=500` sets the coin balance for testing.
 - `--streak=2,3` makes P2 the king with 3 wins in a row.
 - `--shortcut=always` (or `never`) makes computer drivers always (or never) take a shortcut, and `--nitro=off` turns nitro off (for comparing lap times).
+- `--race --weekly` races this week's challenge; `--week=N` pretends it's week N.
 - `--race --career=3` races career event 4 (numbered from 0).
 - `--tutorial` starts the tutorial, `--races=0` starts a time trial, and `--autopilot` lets the bot drive P1 while still saving results.
 - `--bots` makes the computer drive every car well. `--bots=coast` makes them let go before a jump, to test splashes. `--bots=reckless` never brakes (to test crashes).

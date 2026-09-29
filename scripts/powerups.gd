@@ -182,11 +182,14 @@ func _roll(place: int, n: int) -> String:
 	for w in weights.values():
 		total += w
 	var r := randf() * total
+	if Game.nitro_off:
+		weights.shield += weights.mega # no nitro to fill up
+		weights.mega = 0.0
 	for item in weights:
 		r -= weights[item]
 		if r < 0.0:
 			return item
-	return "mega"
+	return "shield" if Game.nitro_off else "mega"
 
 
 # --- Rockets ----------------------------------------------------------------

@@ -371,7 +371,7 @@ func rocket_hit() -> bool:
 
 ## Bonus nitro (close calls, perfect laps); may fill the tank.
 func add_nitro(amount: float) -> void:
-	if nitro_armed or boosting:
+	if nitro_armed or boosting or Game.nitro_off:
 		return
 	nitro = minf(1.0, nitro + amount)
 	if nitro >= 1.0:
@@ -386,7 +386,7 @@ func can_crash() -> bool:
 
 ## Double-tap action: fires a nitro burst if the tank is full.
 func fire_nitro() -> void:
-	if state != State.RACING or not nitro_armed or boosting or Game.debug_no_nitro:
+	if state != State.RACING or not nitro_armed or boosting or Game.debug_no_nitro or Game.nitro_off:
 		return
 	boosting = true
 	_burn_mult = 1.7 if mega else 1.0
@@ -422,6 +422,8 @@ func _update_nitro(delta: float, _held: bool) -> void:
 			nitro_armed = false
 			boosting = false
 			_grace = NITRO_GRACE
+	elif Game.nitro_off:
+		nitro = 0.0 # weekly rule: no nitro (the gauge stays empty)
 	elif not nitro_armed:
 		# Fills faster the closer the car runs to top speed.
 		var fast := clampf((speed / TOP_SPEED - 0.4) / 0.6, 0.0, 1.0)
