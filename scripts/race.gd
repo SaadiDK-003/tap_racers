@@ -111,6 +111,9 @@ func _ready() -> void:
 		car.jumped.connect(_on_jumped)
 		car.landed.connect(_on_landed)
 		car.splashed.connect(_on_splashed)
+		car.took_shortcut.connect(_on_shortcut)
+		# Computer drivers' on/off throttle mustn't count as a double-tap for nitro.
+		car.tap_nitro = not (Game.is_cpu(car.index) or Game.debug_bots or (Game.debug_autopilot and car.index == 0))
 		if Game.is_cpu(car.index):
 			car.engine_gain = -7.0
 
@@ -889,6 +892,13 @@ func _on_landed(car) -> void:
 	world.effects.land_dust(car.position)
 	world.shake = maxf(world.shake, 0.06)
 	Game.buzz_for(car.index, 45, 0.55)
+
+
+func _on_shortcut(car) -> void:
+	if Game.debug_log:
+		print("SHORTCUT %.2f %s speed %d" % [race_time, _short_name(car.index), int(car.speed)])
+	pads.toast(car.index, "SHORTCUT!", Color(0.95, 0.75, 0.4), "loose gravel - easy on the corners")
+	_cpu_says(car, "overtake", 0.3)
 
 
 func _on_splashed(car) -> void:

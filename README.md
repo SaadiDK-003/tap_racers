@@ -123,10 +123,11 @@ Thirteen tracks are in the random rotation, each with its own scenery theme:
 - **Harbor Docks**: an L-shaped circuit around a port, with container yards, boats, cranes and dock lamps.
 - **Splash Canyon**: a desert canyon with a **jump over a river**. Hit the ramp at speed (at least about two-thirds of top speed) to fly across. Too slow and it's a SPLASH, and you come back on the far bank. Nitro gives BIG AIR.
 
+- **Quarry Cut**: a big outer loop with a narrow **gravel shortcut** across the middle. Slow down at the SHORTCUT sign (let go before the fork) to turn in; keep your finger down to stay on the fast way round. The shortcut is much shorter but twisty, with less grip, and you can't use nitro on the run-up if you want to turn in. Its item boxes and mines are on the main road, and rockets don't follow you onto it.
 - **Summit Leap**: an alpine track with a **ravine jump** at the top of the long straight, taken off a hill crest. It's a bigger gap than Splash Canyon's river: keep your foot down up the hill (about 88% of top speed) or you FALL IN and come back on the far side. With nitro it's huge BIG AIR.
 - **Rail Crossing**: countryside with a **railway level crossing** on the long straight. Every 7–12 s the lights flash, a bell rings and the barriers drop; 2 s later a train sweeps across into a tunnel. Wait at the barrier, or risk it: the train knocks you off (a shield saves you). Players heading for it get a "TRAIN!" warning. CPUs stop for it and hold their nitro; Easy ones sometimes chance it.
 
-For your own jump track, set `m.jump_point` to the middle of the gap on a long straight, and optionally `m.jump_kind = "ravine"`, `m.jump_gap`, `m.jump_ramp` and `m.jump_min_speed` (the river is 120 / 40 / 470). The river is drawn automatically and stops before it reaches any other part of the road. For a level crossing, set `m.rail_point` on a straight: the rails run off the map on one side and end in a tunnel wherever another part of the road would be in the way.
+For your own jump track, set `m.jump_point` to the middle of the gap on a long straight, and optionally `m.jump_kind = "ravine"`, `m.jump_gap`, `m.jump_ramp` and `m.jump_min_speed` (the river is 120 / 40 / 470). The river is drawn automatically and stops before it reaches any other part of the road. For a shortcut, set `m.shortcut_from` and `m.shortcut_to` (points on the main road) and `m.shortcut` (the points in between). For a level crossing, set `m.rail_point` on a straight: the rails run off the map on one side and end in a tunnel wherever another part of the road would be in the way.
 
 Scenery (`scripts/scenery.gd`) is generated automatically in the empty ground around and inside each track, along with tyre walls outside the corners, a grandstand at the start line and spectator parking lots.
 
@@ -146,6 +147,7 @@ godot --path . -- --race --players=4 --map=1 --laps=2 --bots
 - `--menu_panel=setup` (or `settings`) opens that menu panel directly.
 - `--scene=garage` (or `records`; `--garage_tab=2` opens the trail tab) opens that screen directly, and `--coins=500` sets the coin balance for testing.
 - `--streak=2,3` makes P2 the king with 3 wins in a row.
+- `--shortcut=always` (or `never`) makes computer drivers always (or never) take a shortcut.
 - `--race --career=3` races career event 4 (numbered from 0).
 - `--tutorial` starts the tutorial, `--races=0` starts a time trial, and `--autopilot` lets the bot drive P1 while still saving results.
 - `--bots` makes the computer drive every car well. `--bots=coast` makes them let go before a jump, to test splashes. `--bots=reckless` never brakes (to test crashes).

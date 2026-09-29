@@ -381,6 +381,7 @@ func _build_demo() -> void:
 	_demo.effects.set_process(false)
 	for car in _demo.cars:
 		car.effects = null # no smoke, sparks or skid marks to update
+		car.tap_nitro = false
 	if _demo.train:
 		_demo.train.quiet = true # no bell or horn under the menu music
 	for car in _demo.cars:

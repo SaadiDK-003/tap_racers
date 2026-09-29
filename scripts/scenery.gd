@@ -118,6 +118,7 @@ static func _distance_field(track) -> Dictionary:
 	d.resize(w * h)
 	d.fill(FIELD_CAP)
 	var pts: PackedVector2Array = track.points()
+	pts.append_array(track.shortcut_points()) # keep scenery off the shortcut too
 	var reach := int(FIELD_CAP / CELL) + 1
 	for i in range(0, pts.size(), 3):
 		var p := pts[i]

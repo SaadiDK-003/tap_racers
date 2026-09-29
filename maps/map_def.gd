@@ -33,6 +33,13 @@ var jump_gap := 120.0 # length of the gap
 var jump_ramp := 40.0 # length of the take-off and landing ramps
 var jump_min_speed := 470.0 # speed needed at the lip to clear the gap
 
+## Shortcut: a narrow gravel road that leaves the main road near `shortcut_from`,
+## runs through `shortcut` (points in between) and rejoins near `shortcut_to`. Cars
+## that reach the fork slowly turn in. Empty = no shortcut.
+var shortcut := PackedVector2Array()
+var shortcut_from := Vector2.INF
+var shortcut_to := Vector2.INF
+
 ## Railway level crossing (on a straight): trains cross the road now and then.
 ## The rails run off the map on one side and into a tunnel on the other. INF = none.
 var rail_point := Vector2.INF

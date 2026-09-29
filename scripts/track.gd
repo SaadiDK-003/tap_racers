@@ -31,6 +31,7 @@ func setup(map_def, offsets: Array[float]) -> void:
 	_find_bridge()
 	_find_jump()
 	_find_rail()
+	_build_shortcut()
 	# Scenery is placed when the track is fitted to the screen (see rebuild_scenery),
 	# since parking lots depend on what's visible. Building it here too was wasted work.
 	_build_visuals()
@@ -207,6 +208,177 @@ func _find_jump() -> void:
 		limits.append(reach)
 	_river_from = -limits[0]
 	_river_to = limits[1]
+
+
+# --- Shortcut ----------------------------------------------------------------------
+# A second, narrower road from the fork (main-loop distance _sc_a) to the merge
+# (_sc_b). Cars keep their progress in main-loop units; on the shortcut it advances
+# shortcut_factor() times faster than they drive, which is what makes it short.
+
+const SC_WIDTH := 70.0
+const SC_LANES := 0.3 # lane offsets are squeezed to this on the narrow road
+const SC_GRIP := 0.88 # loose gravel
+const SC_TAKE_SPEED := 520.0 # reach the fork slower than this and you turn in
+var _sc_a := -1.0
+var _sc_b := 0.0
+var _sc_main := 1.0 # main-loop distance the shortcut skips
+var sc_len := 1.0 # length of the shortcut road
+var _sc_step := STEP
+var _sc_pos := PackedVector2Array()
+var _sc_tan := PackedVector2Array()
+var _sc_curv := PackedFloat32Array()
+
+
+func has_shortcut() -> bool:
+	return _sc_a >= 0.0
+
+
+func shortcut_factor() -> float:
+	return _sc_main / sc_len
+
+
+## Distance along the main loop to the fork (0 .. length).
+func dist_to_fork(s: float) -> float:
+	return fposmod(_sc_a - s, length)
+
+
+## Is main-loop progress `s` within the stretch the shortcut skips?
+func in_shortcut(s: float) -> bool:
+	return has_shortcut() and fposmod(s - _sc_a, length) < _sc_main
+
+
+## Main-loop progress -> distance along the shortcut.
+func sc_u(s: float) -> float:
+	return fposmod(s - _sc_a, length) / _sc_main * sc_len
+
+
+func sc_point(u: float, offset := 0.0) -> Vector2:
+	var f := clampf(u, 0.0, sc_len) / _sc_step
+	var i := mini(int(f), _sc_pos.size() - 2)
+	var t := f - i
+	var tg := _sc_tan[i].lerp(_sc_tan[i + 1], t).normalized()
+	return _sc_pos[i].lerp(_sc_pos[i + 1], t) + Vector2(-tg.y, tg.x) * offset * SC_LANES
+
+
+func sc_tangent(u: float) -> Vector2:
+	var f := clampf(u, 0.0, sc_len) / _sc_step
+	var i := mini(int(f), _sc_pos.size() - 2)
+	return _sc_tan[i].lerp(_sc_tan[i + 1], f - i).normalized()
+
+
+## Curvature `u` along the shortcut; past its end it carries on along the main road.
+func sc_curvature(u: float) -> float:
+	if u > sc_len:
+		return curvature_at(_sc_b + (u - sc_len))
+	var i := clampi(int(u / _sc_step), 0, _sc_curv.size() - 1)
+	return _sc_curv[i]
+
+
+func shortcut_points() -> PackedVector2Array:
+	return _sc_pos
+
+
+func _nearest_s(p: Vector2) -> float:
+	var best := 0
+	for i in _n:
+		if _pos[i].distance_to(p) < _pos[best].distance_to(p):
+			best = i
+	return best * _step
+
+
+func _build_shortcut() -> void:
+	if map.shortcut.is_empty() or not map.shortcut_from.is_finite():
+		return
+	_sc_a = _nearest_s(map.shortcut_from)
+	_sc_b = _nearest_s(map.shortcut_to)
+	_sc_main = fposmod(_sc_b - _sc_a, length)
+	var a := point_at(_sc_a)
+	var b := point_at(_sc_b)
+	var ta := tangent_at(_sc_a)
+	var tb := tangent_at(_sc_b)
+	var pts: Array[Vector2] = [a]
+	pts.append_array(Array(map.shortcut))
+	pts.append(b)
+	var curve := Curve2D.new()
+	curve.bake_interval = 2.0
+	for i in pts.size():
+		var handle: Vector2
+		if i == 0:
+			handle = ta * 70.0 # leaves along the main road...
+		elif i == pts.size() - 1:
+			handle = tb * 70.0 # ...and rejoins along it
+		else:
+			handle = (pts[i + 1] - pts[i - 1]) / 6.0
+		curve.add_point(pts[i], -handle, handle)
+	sc_len = curve.get_baked_length()
+	var n := maxi(4, int(sc_len / STEP))
+	_sc_step = sc_len / n
+	_sc_pos.resize(n + 1)
+	_sc_tan.resize(n + 1)
+	for i in n + 1:
+		_sc_pos[i] = curve.sample_baked(i * _sc_step, true)
+	for i in n + 1:
+		_sc_tan[i] = (_sc_pos[mini(i + 1, n)] - _sc_pos[maxi(i - 1, 0)]).normalized()
+	var k := 8
+	var raw := PackedFloat32Array()
+	raw.resize(n + 1)
+	for i in n + 1:
+		raw[i] = _sc_tan[maxi(i - k, 0)].angle_to(_sc_tan[mini(i + k, n)]) / (2.0 * k * _sc_step)
+	for _pass in 4:
+		var smooth := PackedFloat32Array()
+		smooth.resize(n + 1)
+		for i in n + 1:
+			var sum := 0.0
+			for j in range(-6, 7):
+				sum += raw[clampi(i + j, 0, n)]
+			smooth[i] = sum / 13.0
+		raw = smooth
+	_sc_curv = raw
+
+
+func _draw_shortcut(ci: CanvasItem) -> void:
+	if not has_shortcut():
+		return
+	var gravel := Color(0.62, 0.5, 0.36)
+	var edge := Color(0.42, 0.33, 0.24)
+	for layer in [[SC_WIDTH + 20.0, Color(0, 0, 0, 0.25), Vector2(0, 8)], [SC_WIDTH + 10.0, edge, Vector2.ZERO], [SC_WIDTH, gravel, Vector2.ZERO]]:
+		var w: float = layer[0]
+		for i in range(0, _sc_pos.size(), 2):
+			ci.draw_circle(_sc_pos[i] + layer[2], w * 0.5, layer[1])
+	# Loose stones and a dashed centre line.
+	for i in range(8, _sc_pos.size() - 8, 14):
+		ci.draw_line(_sc_pos[i] - _sc_tan[i] * 10.0, _sc_pos[i] + _sc_tan[i] * 10.0, Color(0.85, 0.78, 0.62, 0.8), 3.0)
+	for i in range(3, _sc_pos.size() - 3, 9):
+		var n := Vector2(-_sc_tan[i].y, _sc_tan[i].x)
+		ci.draw_circle(_sc_pos[i] + n * (float((i * 37) % 41) - 20.0), 2.5, edge)
+
+
+## SHORTCUT sign and arrow, painted on the main road just before the fork (drawn
+## after the road, so it's on top).
+func _draw_shortcut_sign(ci: CanvasItem) -> void:
+	if not has_shortcut():
+		return
+	# SHORTCUT sign painted on the road just before the fork, on the side it leaves.
+	var side := signf(tangent_at(_sc_a).cross(_sc_pos[mini(20, _sc_pos.size() - 1)] - point_at(_sc_a)))
+	var q := point_at(_sc_a - 150.0, side * map.road_width * 0.22)
+	var font := ThemeDB.fallback_font
+	var tg := tangent_at(_sc_a - 150.0)
+	ci.draw_set_transform(q, tg.angle() + PI * 0.5)
+	ci.draw_string(font, Vector2(-60, 0), "SHORTCUT", HORIZONTAL_ALIGNMENT_CENTER, 120, 18, Color(1, 1, 1, 0.75))
+	ci.draw_string(font, Vector2(-60, 20), "SLOW DOWN", HORIZONTAL_ALIGNMENT_CENTER, 120, 13, Color(1.0, 0.85, 0.3, 0.8))
+	ci.draw_set_transform(Vector2.ZERO)
+	# Arrow on the road: up the lane, then bending off towards the shortcut.
+	var off: float = side * map.road_width * 0.3
+	var p0 := point_at(_sc_a - 125.0, off)
+	var p1 := point_at(_sc_a - 80.0, off)
+	var d := tangent_at(_sc_a - 80.0).rotated(side * 0.6)
+	var p2 := p1 + d * 28.0
+	var white := Color(1, 1, 1, 0.7)
+	ci.draw_line(p0, p1, white, 6.0)
+	ci.draw_line(p1, p2, white, 6.0)
+	ci.draw_circle(p1, 3.0, white)
+	for a in [0.6, -0.6]:
+		ci.draw_line(p2, p2 - d.rotated(a) * 16.0, white, 6.0)
 
 
 # --- Railway level crossing -------------------------------------------------------
@@ -582,9 +754,11 @@ func _build_visuals() -> void:
 	shadow.position = Vector2(0, 10)
 	_bake_root.add_child(shadow)
 	_add_layer(func(ci): _draw_band(ci, map.road_width + 40.0, Color.BLACK), shadow)
+	_add_layer(_draw_shortcut, _bake_root) # under the main road, so the forks blend in
 	_add_layer(_draw_curbs, _bake_root)
 	_add_layer(func(ci): _draw_band(ci, map.road_width, map.road), _bake_root)
 	_add_layer(_draw_details, _bake_root)
+	_add_layer(_draw_shortcut_sign, _bake_root)
 	_add_layer(_draw_jump, _bake_root)
 	_add_layer(_draw_rail, _bake_root)
 	_scenery_layer = _add_layer(func(ci): Scenery.draw_all(ci, _props), _bake_root)
