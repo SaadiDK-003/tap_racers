@@ -14,6 +14,7 @@ var _demo: RaceWorld
 var _sound_button: Button
 var _music_button: Button
 var _vibe_button: Button
+var _replay_button: Button
 var _landscape := false
 var _play_button: Button
 var _summary: Label
@@ -43,6 +44,11 @@ func _ready() -> void:
 		return
 	if Game.debug_skip_menu:
 		Game.debug_skip_menu = false
+		if Game.has_meta("weekly"):
+			Game.remove_meta("weekly")
+			Game.start_weekly()
+			get_tree().change_scene_to_file.call_deferred("res://scenes/race.tscn")
+			return
 		if Game.has_meta("career"):
 			Game.start_career(clampi(Game.get_meta("career"), 0, Game.CareerEvents.count() - 1))
 			Game.remove_meta("career")
@@ -150,6 +156,7 @@ func _build_home() -> void:
 	right.add_child(_center_wrap(_career_button()))
 	right.add_child(_center_wrap(grid))
 	right.add_child(_daily_chip())
+	right.add_child(_weekly_chip())
 
 	# Settings gear in the top-left corner (the coin counter sits top-right).
 	var gear := Button.new()
@@ -270,6 +277,8 @@ func _build_settings() -> void:
 	_music_button = _menu_button("", _toggle_music, Vector2(380, 70))
 	content.add_child(_center_wrap(_sound_button))
 	content.add_child(_center_wrap(_music_button))
+	_replay_button = _menu_button("", _toggle_replays, Vector2(380, 70))
+	content.add_child(_center_wrap(_replay_button))
 	if Game.is_touch():
 		_vibe_button = _menu_button("", _toggle_vibration, Vector2(380, 70))
 		content.add_child(_center_wrap(_vibe_button))
@@ -378,6 +387,9 @@ func _build_demo() -> void:
 	_demo.effects.set_process(false)
 	for car in _demo.cars:
 		car.effects = null # no smoke, sparks or skid marks to update
+		car.tap_nitro = false
+	if _demo.train:
+		_demo.train.quiet = true # no bell or horn under the menu music
 	for car in _demo.cars:
 		car.state = Car.State.RACING
 		car.progress = -22.0 - car.index * 260.0
@@ -394,9 +406,9 @@ func _process(delta: float) -> void:
 	if _demo:
 		var leader = _demo.cars[0]
 		for car in _demo.cars:
-			if car.bot_wants_nitro():
+			if car.bot_wants_nitro() and not _demo.train_ahead(car):
 				car.fire_nitro()
-			car.tick(delta, car.bot_throttle())
+			car.tick(delta, car.bot_throttle() and not _demo.should_wait_for_train(car))
 			if car.progress > leader.progress:
 				leader = car
 		_demo.effects.leader = leader
@@ -439,6 +451,41 @@ func _offer_tutorial() -> void:
 	skip.custom_minimum_size = Vector2(420, 64)
 	skip.pressed.connect(func(): Profile.set_setting("tutorial_offered", true); overlay.queue_free())
 	v.add_child(skip)
+
+
+## This week's challenge: track, rule, reward and days left. Tap to race it.
+func _weekly_chip() -> Control:
+	var c := Game.weekly_challenge()
+	var won := Profile.weekly_won()
+	var col := Color(0.4, 0.9, 0.5) if won else Color(0.55, 0.75, 1.0)
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(460, 0)
+	for st in ["normal", "hover", "pressed"]:
+		var bg := Color(col, 0.14 if st == "normal" else (0.24 if st == "hover" else 0.08))
+		var style := Game.make_style(bg, 14, Color(col, 0.8), 3)
+		style.content_margin_top = 6
+		style.content_margin_bottom = 6
+		b.add_theme_stylebox_override(st, style)
+	b.pressed.connect(func():
+		Game.save_settings()
+		Game.start_weekly()
+		get_tree().change_scene_to_file("res://scenes/race.tscn"))
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(v)
+	var top := "WEEKLY CHALLENGE  •  %s" % ("WON!" if won else "+%d COINS" % Game.WEEKLY_COINS)
+	var days := "last day!" if c.days_left <= 1 else "%d days left" % c.days_left
+	for line in [[top, 16, col], ["%s  •  %s" % [String(c.title).to_upper(), c.rule.name], 21, Color.WHITE], ["%s  •  %s  •  TAP TO RACE" % [c.rule.text, days], 14, Color(1, 1, 1, 0.65)]]:
+		var l := _label(line[0], line[1], 4, line[2])
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		v.add_child(l)
+	# The button sizes itself to its labels.
+	b.custom_minimum_size.y = 84
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	return b
 
 
 func _daily_chip() -> Control:
@@ -501,6 +548,12 @@ func _toggle_music() -> void:
 	_update_sound_button()
 
 
+func _toggle_replays() -> void:
+	Profile.set_setting("replays", not bool(Profile.setting("replays", true)))
+	_update_sound_button()
+	Sfx.play(Sfx.beep)
+
+
 func _toggle_vibration() -> void:
 	Game.vibration = not Game.vibration
 	Game.save_settings()
@@ -509,6 +562,8 @@ func _toggle_vibration() -> void:
 
 
 func _update_sound_button() -> void:
+	if _replay_button:
+		_replay_button.text = "REPLAYS: ON" if bool(Profile.setting("replays", true)) else "REPLAYS: OFF"
 	if _vibe_button:
 		_vibe_button.text = "VIBRATION: ON" if Game.vibration else "VIBRATION: OFF"
 	if _sound_button:

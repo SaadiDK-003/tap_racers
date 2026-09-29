@@ -99,6 +99,10 @@ func _process(delta: float) -> void:
 		m.t += delta
 	_mines = _mines.filter(func(m): return m.t < MINE_LIFE and m.lanes.has(true))
 	for r in _roulette:
+		# On the shortcut the roulette keeps spinning: the item arrives back on the main
+		# road (a rocket fired from the gravel road would fly down the wrong road).
+		if r.car.on_shortcut and r.t > ROULETTE_TIME * 0.8:
+			continue
 		r.t += delta
 		if r.t >= ROULETTE_TIME:
 			if r.car.state == Car.State.RACING:
@@ -117,6 +121,8 @@ func update_cars(places: Array[int]) -> void:
 		_prev[car] = now
 		if car.state != Car.State.RACING or now <= before:
 			continue
+		if car.on_shortcut:
+			continue # its boxes and mines are on the main road it skipped
 		_check_mines(car, before, now)
 		if not active:
 			continue
@@ -176,11 +182,14 @@ func _roll(place: int, n: int) -> String:
 	for w in weights.values():
 		total += w
 	var r := randf() * total
+	if Game.nitro_off:
+		weights.shield += weights.mega # no nitro to fill up
+		weights.mega = 0.0
 	for item in weights:
 		r -= weights[item]
 		if r < 0.0:
 			return item
-	return "mega"
+	return "shield" if Game.nitro_off else "mega"
 
 
 # --- Rockets ----------------------------------------------------------------
@@ -191,7 +200,7 @@ func fire_rocket(shooter):
 	var target = null
 	var best := INF
 	for c in cars:
-		if c == shooter or c.state == Car.State.FINISHED:
+		if c == shooter or c.state == Car.State.FINISHED or c.on_shortcut:
 			continue
 		var gap: float = c.progress - shooter.progress
 		if gap > 0.0 and gap < best:
@@ -199,7 +208,7 @@ func fire_rocket(shooter):
 			target = c
 	if target == null:
 		for c in cars:
-			if c == shooter or c.state == Car.State.FINISHED:
+			if c == shooter or c.state == Car.State.FINISHED or c.on_shortcut:
 				continue
 			var gap: float = shooter.progress - c.progress
 			if gap >= 0.0 and gap < best:
@@ -257,7 +266,7 @@ func _update_rockets(delta: float) -> void:
 			if effects:
 				effects.burst(target.position, Color(1.0, 0.55, 0.15))
 			rocket_hit.emit(target, r.shooter)
-		elif target.state != Car.State.RACING and r.t > 0.3:
+		elif (target.state != Car.State.RACING or target.on_shortcut or r.shooter.on_shortcut) and r.t > 0.3:
 			r.t = 99.0 # target crashed or finished before it arrived: fizzle out
 			if effects:
 				effects.puff(_rocket_pos(r), Color(0.4, 0.4, 0.42, 0.6), 10.0, Vector2.ZERO, 0.6)

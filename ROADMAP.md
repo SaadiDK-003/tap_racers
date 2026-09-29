@@ -31,15 +31,15 @@
 - [x] **Track intro sweep:** a 2-second camera sweep over the track before the start lights.
 - [x] **Career mode:** 10 events against named CPU drivers, with 1–3 stars each (podium, win, goal), coins for new stars, and CAREER STAR / SUPERSTAR awards.
 - [x] **Win streak "king":** a crown on the pad of whoever won twice in a row, +15 coins per streak win, and +40 for beating them.
-- [ ] **Race replay:** a slow-motion replay of the best moment (photo finish, rocket hit, splash).
+- [x] **Race replay:** after the finish, the race's best moment (train hit, rocket or mine hit, lightning, splash, big air, last-lap lead change) replays in slow motion with the camera on it, bursts and sounds included. Tap to skip; REPLAYS on/off in Settings.
 - [x] **Haptics pass:** vibration for crashes, splashes, hits, landings, nitro and wins (humans only, rate-limited, with a setting). Also a performance pass: the pads' static parts are baked into one texture (draw calls down from ~150 to ~60 a frame), and fonts are pre-rasterized while the race loads.
-- [ ] **Per-body engine sounds:** kart buzz, muscle rumble, hover hum.
-- [ ] **Weather mid-race:** rain can start partway through a race.
-- [ ] **Shortcut track:** a risky, faster narrow path.
-- [ ] **Moving obstacles:** a train crossing or a rotating bridge on a new track.
-- [ ] **Second jump track:** a bigger jump with a hill.
+- [x] **Per-body engine sounds:** each body has its own synthesized engine and pitch range (kart buzz, formula whine, muscle rumble, buggy rattle, hover hum), and tapping a body in the garage revs it.
+- [x] **Weather mid-race:** in random-weather races, about 3 in 10 clear races get a shower between lap 2 and the second-to-last lap: lightning, thunder, RAIN INCOMING!, then rain, tint and slippery grip build up over 5 seconds.
+- [x] **Shortcut track:** Quarry Cut: a hairpin with a gravel shortcut right beside it. Reach the fork slowly (below ~520) to turn in. It's about even with using nitro that lap (17.9 s vs 17.4 s over 5 laps), so it's a real choice. CPUs sometimes take it.
+- [x] **Moving obstacles:** Rail Crossing, a track with a level crossing: lights, bell and barriers, then a train sweeps across into a tunnel. Wait, or get knocked off (a shield saves you). CPUs stop for it (Easy ones sometimes chance it).
+- [x] **Second jump track:** Summit Leap, an alpine track with a 190-long ravine taken off a hill crest (the river is 120). You need ~88% of top speed; too slow and you FALL IN. Cars fly higher over a bigger gap.
 - [ ] **Tournament brackets:** up to 8 friends, heats and a final.
-- [ ] **Weekly challenge track** with a rule (no nitro, night only, ...).
+- [x] **Weekly challenge:** one track and one rule a week (NO NITRO, NIGHT RACE, STORM, ROCKET PARTY, MINEFIELD, HARD RIVALS), the same for everyone, from a chip on the home screen. P1 against three CPUs; the first win of the week pays 200 coins, plus the WEEKEND WARRIOR award.
 - [ ] **Shareable ghost codes:** race a friend's best lap.
 
 ## Ideas for later

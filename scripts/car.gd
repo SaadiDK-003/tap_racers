@@ -12,6 +12,7 @@ signal shield_used(car) # the shield power-up just blocked a crash or a rocket
 signal jumped(car, big: bool) # left the ramp over the water (big = on nitro)
 signal landed(car)
 signal splashed(car) # too slow for the jump: fell in the water
+signal took_shortcut(car)
 
 enum State { GRID, RACING, CRASHED, FINISHED }
 
@@ -37,7 +38,6 @@ const SLIP_RECOVER := 6.0 # how fast the car regains grip once back under it
 const SLIP_VISIBLE := 0.25 # below this the car looks perfectly planted
 const MAX_DRIFT := 10.0 # sideways slide (px) just before a crash
 const CRASH_TIME := 1.1
-const JUMP_MIN := 470.0 # speed needed at the ramp to clear the water
 const SPLASH_TIME := 1.1
 const CRUISE_SPEED := 220.0
 const LENGTH := 42.0
@@ -78,6 +78,12 @@ var zap_t := 0.0 # lightning: shrunk and slowed while > 0
 var airborne := false # flying over the water gap
 var air_h := 0.0 # 0..~1 height while airborne (for scale and shadow)
 var _sink := false # current "crash" is a splash into the water
+var tap_nitro := true # a double-tap fires nitro (players; computer drivers fire it themselves)
+var on_shortcut := false # driving the shortcut (progress still counts in main-loop units)
+var shortcut_plan := false # computer drivers: going for the shortcut this lap
+var _plan_lap := -1
+var _sc_in := 0.0 # (debug log) when it turned in, and its slowest speed on the shortcut
+var _sc_min := 0.0
 var _base_scale := Vector2.ZERO
 const SHIELD_TIME := 10.0
 var mega := false # power-up: the next nitro burst lasts longer
@@ -154,13 +160,56 @@ func _add_fx_layer(fn: Callable) -> Node2D:
 
 
 func place() -> void:
-	position = track.point_at(progress, lane_offset)
-	rotation = track.tangent_at(progress).angle()
+	position = _point(progress, lane_offset)
+	rotation = _tangent(progress).angle()
+
+
+# Road geometry for wherever the car is: the main loop, or the shortcut.
+func _point(s: float, offset: float) -> Vector2:
+	return track.sc_point(track.sc_u(s), offset) if on_shortcut else track.point_at(s, offset)
+
+
+func _tangent(s: float) -> Vector2:
+	return track.sc_tangent(track.sc_u(s)) if on_shortcut else track.tangent_at(s)
+
+
+## Curvature `x` ahead along the road this car will drive (through the shortcut if
+## it's on it, or a computer driver is going for it).
+func curvature_ahead(x: float) -> float:
+	if on_shortcut:
+		return track.sc_curvature(track.sc_u(progress) + x)
+	if shortcut_plan and track.has_shortcut():
+		var d: float = track.dist_to_fork(progress)
+		if x >= d and d < 1500.0:
+			return track.sc_curvature(x - d)
+	return track.curvature_at(progress + x)
+
+
+## Turn into the shortcut at the fork when slow enough; leave it at the merge.
+func _update_route(before: float) -> void:
+	if not track.has_shortcut():
+		return
+	if on_shortcut:
+		_sc_min = minf(_sc_min, speed)
+		if not track.in_shortcut(progress):
+			on_shortcut = false
+			if Game.debug_log:
+				print("SHORTCUT OUT car %d took %.2fs, slowest %d, now %d" % [index, _clock - _sc_in, int(_sc_min), int(speed)])
+		return
+	var d_before: float = track.dist_to_fork(before)
+	if d_before <= speed * 0.1 + 2.0 and track.in_shortcut(progress):
+		if Game.debug_log and shortcut_plan and speed >= track.SC_TAKE_SPEED:
+			print("FORK MISSED car %d speed %d" % [index, int(speed)])
+		if state == State.RACING and not airborne and speed < track.SC_TAKE_SPEED:
+			on_shortcut = true
+			_sc_in = _clock
+			_sc_min = speed
+			took_shortcut.emit(self)
 
 
 func tick(delta: float, held: bool) -> void:
 	_clock += delta
-	if held and not _prev_held:
+	if held and not _prev_held and tap_nitro:
 		if _clock - _last_press <= DOUBLE_TAP:
 			fire_nitro()
 		_last_press = _clock
@@ -217,7 +266,7 @@ func tick(delta: float, held: bool) -> void:
 
 
 func _drive(delta: float, held: bool) -> void:
-	var k: float = track.curvature_at(progress)
+	var k: float = curvature_ahead(0.0)
 
 	_update_nitro(delta, held)
 
@@ -240,7 +289,7 @@ func _drive(delta: float, held: bool) -> void:
 	else:
 		speed = move_toward(speed, 0.0, (DRAG + 750.0 * speed / TOP_SPEED) * delta)
 
-	var safe := sqrt(GRIP * grip_mult / maxf(absf(k), 0.00001))
+	var safe := sqrt(GRIP * _grip() / maxf(absf(k), 0.00001))
 	var over := speed / safe - 1.0 - SLIP_TOLERANCE
 	if airborne:
 		slip = 0.0
@@ -258,11 +307,13 @@ func _drive(delta: float, held: bool) -> void:
 		_slide_dir = -signf(k)
 	var visible_slip := maxf(0.0, slip - SLIP_VISIBLE) / (1.0 - SLIP_VISIBLE)
 	_drift = lerpf(_drift, visible_slip * MAX_DRIFT * _slide_dir, minf(1.0, 12.0 * delta))
-	progress += speed * delta
+	var before := progress
+	progress += speed * delta * (track.shortcut_factor() if on_shortcut else 1.0)
+	_update_route(before)
 	if track.has_jump() and _check_jump():
 		return
-	position = track.point_at(progress, lane_offset + _drift)
-	var heading: float = track.tangent_at(progress).angle() - _slide_dir * visible_slip * 0.25
+	position = _point(progress, lane_offset + _drift)
+	var heading: float = _tangent(progress).angle() - _slide_dir * visible_slip * 0.25
 	rotation = lerp_angle(rotation, heading, 1.0 - exp(-TURN_SMOOTHING * delta))
 
 	if visible_slip > 0.0:
@@ -320,7 +371,7 @@ func rocket_hit() -> bool:
 
 ## Bonus nitro (close calls, perfect laps); may fill the tank.
 func add_nitro(amount: float) -> void:
-	if nitro_armed or boosting:
+	if nitro_armed or boosting or Game.nitro_off:
 		return
 	nitro = minf(1.0, nitro + amount)
 	if nitro >= 1.0:
@@ -335,13 +386,29 @@ func can_crash() -> bool:
 
 ## Double-tap action: fires a nitro burst if the tank is full.
 func fire_nitro() -> void:
-	if state != State.RACING or not nitro_armed or boosting:
+	if state != State.RACING or not nitro_armed or boosting or Game.debug_no_nitro or Game.nitro_off:
 		return
 	boosting = true
 	_burn_mult = 1.7 if mega else 1.0
 	mega = false
 	speed = minf(BOOST_SPEED, maxf(speed, 200.0) + NITRO_KICK)
 	boost_started.emit(self)
+
+
+## Grip here: weather, plus loose gravel on the shortcut.
+func _grip() -> float:
+	return grip_mult * (track.SC_GRIP if on_shortcut else 1.0)
+
+
+## Ends a nitro burst early (the rest of the tank is lost). CPU drivers use it to
+## stop for a train.
+func cancel_nitro() -> void:
+	if not boosting:
+		return
+	boosting = false
+	nitro = 0.0
+	nitro_armed = false
+	_grace = NITRO_GRACE
 
 
 func _update_nitro(delta: float, _held: bool) -> void:
@@ -355,6 +422,8 @@ func _update_nitro(delta: float, _held: bool) -> void:
 			nitro_armed = false
 			boosting = false
 			_grace = NITRO_GRACE
+	elif Game.nitro_off:
+		nitro = 0.0 # weekly rule: no nitro (the gauge stays empty)
 	elif not nitro_armed:
 		# Fills faster the closer the car runs to top speed.
 		var fast := clampf((speed / TOP_SPEED - 0.4) / 0.6, 0.0, 1.0)
@@ -369,9 +438,11 @@ func _update_nitro(delta: float, _held: bool) -> void:
 func bot_wants_nitro() -> bool:
 	if not nitro_armed or boosting:
 		return false
+	if shortcut_plan and not on_shortcut and track.dist_to_fork(progress) < 2200.0:
+		return false # it has to slow down for the shortcut
 	var x := 0.0
 	while x < 700.0:
-		if absf(track.curvature_at(progress + x)) > 1.0 / 180.0:
+		if absf(curvature_ahead(x)) > 1.0 / 180.0:
 			return false
 		x += 25.0
 	return true
@@ -387,9 +458,10 @@ func _check_jump() -> bool:
 			air_h = 0.0
 			landed.emit(self)
 		else:
-			air_h = sin(PI * f) * clampf(speed / TOP_SPEED, 0.75, 1.25)
+			# Higher over a bigger gap (a 190 ravine flies ~1.4x higher than the river).
+			air_h = sin(PI * f) * clampf(speed / TOP_SPEED, 0.75, 1.25) * clampf(track.jump_gap / 120.0, 1.0, 1.5)
 	elif f >= 0.0 and f < 0.5:
-		if speed >= JUMP_MIN or state == State.FINISHED:
+		if speed >= track.jump_min or state == State.FINISHED:
 			airborne = true
 			_drift = 0.0
 			jumped.emit(self, speed > TOP_SPEED * 1.05)
@@ -406,12 +478,12 @@ func _splash() -> void:
 	boosting = false
 	_sink = true
 	_crash_timer = SPLASH_TIME
-	_crash_vel = track.tangent_at(progress) * speed * 0.35
+	_crash_vel = _tangent(progress) * speed * 0.35
 	_spin = 0.0
 	speed = 0.0
 	slip = 0.0
 	_drift = 0.0
-	position = track.point_at(progress, lane_offset)
+	position = _point(progress, lane_offset)
 	splashed.emit(self)
 
 
@@ -441,7 +513,7 @@ func _crash(outward: float) -> void:
 	_grace = 0.0
 	lap_clean = false
 	_peak_slip = 0.0
-	var tg: Vector2 = track.tangent_at(progress)
+	var tg: Vector2 = _tangent(progress)
 	var normal := Vector2(-tg.y, tg.x) * outward
 	_crash_vel = (tg * 0.85 + normal * 0.5).normalized() * maxf(speed, 160.0) * 0.8
 	_spin = -outward * 11.0
@@ -468,7 +540,7 @@ func _crashed(delta: float) -> void:
 	if _crash_timer <= 0.0:
 		# Out of the water (or a crash that ended over it): back on the landing ramp.
 		if _sink or (track.has_jump() and track.jump_fraction(progress) >= 0.0):
-			progress = track.jump_lip() + track.JUMP_GAP + track.JUMP_RAMP * 0.6 + floorf((progress - track.jump_lip()) / track.length) * track.length
+			progress = track.jump_lip() + track.jump_gap + track.jump_ramp * 0.6 + floorf((progress - track.jump_lip()) / track.length) * track.length
 		_sink = false
 		state = State.RACING
 		_invuln = 1.0
@@ -497,7 +569,8 @@ func _update_engine() -> void:
 	if engine == null:
 		return
 	var r := speed / TOP_SPEED
-	engine.pitch_scale = 0.55 + r * 1.35
+	var pitch: Array = Sfx.ENGINE_PITCH.get(body, Sfx.ENGINE_PITCH.classic)
+	engine.pitch_scale = pitch[0] + r * pitch[1]
 	engine.volume_db = lerpf(-30.0, -17.0, clampf(r, 0.0, 1.0)) + (2.0 if boosting else 0.0) + engine_gain
 
 
@@ -506,16 +579,33 @@ func _update_engine() -> void:
 ## keeps CPUs from driving identically.
 func bot_throttle(skill := 1.0, top_share := 1.0) -> bool:
 	# Approaching the jump: floor it, whatever the usual speed cap.
-	if track.has_jump() and track.dist_to_lip(progress) < 420.0 and speed < JUMP_MIN * 1.2:
+	# (A faster jump needs a longer run-up: 420 for the river, ~900 for the ravine.)
+	var run_up: float = 420.0 + maxf(0.0, track.jump_min - 470.0) * 3.0
+	if track.has_jump() and track.dist_to_lip(progress) < run_up and speed < track.jump_min * 1.2:
 		return true
 	if not boosting and speed > TOP_SPEED * top_share:
 		return false
+	if track.has_shortcut() and not on_shortcut:
+		var d: float = track.dist_to_fork(progress)
+		# Decide once per lap, well before the fork (good drivers go for it sometimes).
+		var lap := floori((progress + 1300.0 - track._sc_a) / track.length)
+		if d < 1300.0 and lap != _plan_lap:
+			_plan_lap = lap
+			shortcut_plan = skill >= 0.7 and randf() < 0.45
+			if Game.debug_shortcut != "":
+				shortcut_plan = Game.debug_shortcut == "always"
+			if boosting:
+				shortcut_plan = false # can't slow down on nitro: stay on the main road
+		if shortcut_plan and d < 1300.0:
+			var target: float = track.SC_TAKE_SPEED - 50.0
+			if speed > target and d < (speed * speed - target * target) / (2.0 * BRAKE) + 30.0:
+				return false
 	skill *= 1.0 + 0.03 * sin(progress / 280.0 + index * 1.7)
 	var brake_dist := speed * speed / (2.0 * BRAKE) + 40.0
 	var x := 0.0
 	while x <= brake_dist:
-		var k: float = track.curvature_at(progress + x)
-		var safe := sqrt(GRIP * grip_mult / maxf(absf(k), 0.00001)) * (1.0 + SLIP_TOLERANCE * 0.8) * skill
+		var k: float = curvature_ahead(x)
+		var safe := sqrt(GRIP * _grip() / maxf(absf(k), 0.00001)) * (1.0 + SLIP_TOLERANCE * 0.8) * skill
 		if speed > sqrt(safe * safe + 2.0 * BRAKE * x):
 			return false
 		x += 12.0

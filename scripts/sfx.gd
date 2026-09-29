@@ -40,7 +40,7 @@ func _ready() -> void:
 	rain = _make(2.0, _rain, true)
 	pickup = _make(0.35, _pickup)
 	_ambient = AudioStreamPlayer.new()
-	_ambient.volume_db = -16.0
+	_ambient.volume_db = AMBIENT_DB
 	add_child(_ambient)
 	_music_player = AudioStreamPlayer.new()
 	_music_player.volume_db = -13.0
@@ -76,7 +76,16 @@ func play_ambient(stream: AudioStream) -> void:
 		_ambient.stop()
 		return
 	_ambient.stream = stream
+	_ambient.volume_db = AMBIENT_DB
 	_ambient.play()
+
+
+const AMBIENT_DB := -16.0
+
+
+## Ambience volume, 0..1 of normal (a shower fades its rain in).
+func set_ambient_level(level: float) -> void:
+	_ambient.volume_db = AMBIENT_DB + linear_to_db(maxf(level, 0.001))
 
 
 ## Slows the music down (used for the slow-motion photo finish).
@@ -157,10 +166,39 @@ func _render_one(name: String) -> void:
 	_music = music
 
 
+# Engine pitch per car body: [pitch at rest, extra pitch at top speed].
+const ENGINE_PITCH := {
+	"classic": [0.55, 1.35],
+	"kart": [0.75, 1.55], # buzzy, revs up quickly
+	"f1": [0.7, 1.9], # screams at the top
+	"muscle": [0.5, 0.95], # low and lazy
+	"buggy": [0.6, 1.2],
+	"hover": [0.8, 0.7], # a gentle rising hum
+}
+
+var _engines := {} # body id -> looping AudioStreamWAV, made on first use
+
+
+## The looping engine sound of a car body (synthesized the first time it's needed).
+func engine_for(body: String) -> AudioStreamWAV:
+	if body == "classic" or not ENGINE_PITCH.has(body):
+		return engine
+	if not _engines.has(body):
+		var fn: Callable
+		match body:
+			"kart": fn = _engine_kart
+			"f1": fn = _engine_f1
+			"muscle": fn = _engine_muscle
+			"buggy": fn = _engine_buggy
+			"hover": fn = _engine_hover
+		_engines[body] = _make(0.5, fn, true)
+	return _engines[body]
+
+
 ## A looping engine player for one car; the caller changes its pitch with speed.
-func make_engine() -> AudioStreamPlayer:
+func make_engine(body := "classic") -> AudioStreamPlayer:
 	var p := AudioStreamPlayer.new()
-	p.stream = engine
+	p.stream = engine_for(body)
 	p.volume_db = -30.0
 	return p
 
@@ -170,6 +208,11 @@ func _make(duration: float, fn: Callable, loop := false) -> AudioStreamWAV:
 	var data := PackedByteArray()
 	data.resize(n * 2)
 	_lp = 0.0
+	if loop:
+		# Run the loop once first so the smoothing filter (_lp) is already "warm":
+		# the recorded loop then ends where it starts, with no click at the seam.
+		for i in n:
+			fn.call(float(i) / RATE, duration)
 	for i in n:
 		var v: float = fn.call(float(i) / RATE, duration)
 		data.encode_s16(i * 2, int(clampf(v, -1.0, 1.0) * 32767.0))
@@ -203,6 +246,82 @@ func _engine(t: float, _d: float) -> float:
 	v *= 0.75 + 0.25 * sin(TAU * 24.0 * t)
 	_lp += (v + _noise() * 0.15 - _lp) * 0.25
 	return _lp * 0.7
+
+
+# --- Train (made on first use) ---
+
+var _train_sounds := {}
+
+
+## Level-crossing bell: two dings per 0.6 s loop (in step with the flashing lights).
+func bell() -> AudioStreamWAV:
+	if not _train_sounds.has("bell"):
+		_train_sounds.bell = _make(0.6, func(t, _d):
+			var k := fmod(t, 0.3)
+			return (sin(TAU * 1320.0 * t) + 0.5 * sin(TAU * 2640.0 * t) + 0.3 * sin(TAU * 1980.0 * t)) * exp(-k * 11.0) * 0.32, true)
+	return _train_sounds.bell
+
+
+func horn() -> AudioStreamWAV:
+	if not _train_sounds.has("horn"):
+		_train_sounds.horn = _make(1.1, func(t, d):
+			var env := minf(1.0, t / 0.05) * minf(1.0, (d - t) / 0.35)
+			var v := 0.4 * _saw(311.0, t) + 0.35 * _saw(370.0, t) + 0.3 * _saw(466.0, t)
+			_lp += (v - _lp) * 0.2
+			return _lp * env * 0.6)
+	return _train_sounds.horn
+
+
+## Rolling train: a low rumble with the clickety-clack of the wheels.
+func rumble() -> AudioStreamWAV:
+	if not _train_sounds.has("rumble"):
+		_train_sounds.rumble = _make(1.0, func(t, _d):
+			var clack := exp(-fmod(t, 1.0 / 6.0) * 40.0)
+			_lp += (_noise() - _lp) * 0.06
+			return _lp * 1.6 + clack * 0.25 * sin(TAU * 180.0 * t), true)
+	return _train_sounds.rumble
+
+
+# Body engines. Every frequency is a multiple of 2 Hz so the 0.5 s loop is seamless.
+
+## Kart: a buzzy little two-stroke (square-ish, no bass, quick flutter).
+func _engine_kart(t: float, _d: float) -> float:
+	var v := 0.5 * signf(sin(TAU * 150.0 * t)) + 0.25 * _saw(300.0, t)
+	v *= 0.7 + 0.3 * signf(sin(TAU * 50.0 * t))
+	_lp += (v + _noise() * 0.1 - _lp) * 0.35
+	return _lp * 0.42
+
+
+## Formula: a thin, high whine with a hard edge.
+func _engine_f1(t: float, _d: float) -> float:
+	var v := 0.5 * _saw(220.0, t) + 0.3 * _saw(330.0, t) + 0.2 * sin(TAU * 440.0 * t)
+	v *= 0.85 + 0.15 * sin(TAU * 110.0 * t)
+	_lp += (v - _lp) * 0.45
+	return _lp * 0.58
+
+
+## Muscle: a deep V8 rumble with an uneven lope.
+func _engine_muscle(t: float, _d: float) -> float:
+	var v := 0.6 * _saw(56.0, t) + 0.35 * sin(TAU * 28.0 * t) + 0.2 * _saw(84.0, t)
+	var lope := 0.6 + 0.25 * sin(TAU * 14.0 * t) + 0.15 * sin(TAU * 6.0 * t)
+	v *= lope
+	_lp += (v + _noise() * 0.18 - _lp) * 0.16
+	return _lp * 0.85
+
+
+## Buggy: a rattly mid-range engine with a gritty edge.
+func _engine_buggy(t: float, _d: float) -> float:
+	var v := 0.45 * _saw(80.0, t) + 0.3 * signf(sin(TAU * 120.0 * t)) * 0.6
+	v *= 0.7 + 0.3 * absf(sin(TAU * 40.0 * t))
+	_lp += (v + _noise() * 0.35 - _lp) * 0.3
+	return _lp * 0.6
+
+
+## Hover: a smooth sci-fi hum (two detuned sines beating slowly), no noise.
+func _engine_hover(t: float, _d: float) -> float:
+	var v := 0.5 * sin(TAU * 120.0 * t) + 0.45 * sin(TAU * 124.0 * t) + 0.2 * sin(TAU * 240.0 * t)
+	v *= 0.8 + 0.2 * sin(TAU * 4.0 * t)
+	return v * 0.42
 
 
 func _crash(t: float, _d: float) -> float:

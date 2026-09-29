@@ -4,6 +4,7 @@ extends Control
 const COUNT := 140
 
 var _drops: Array[Dictionary] = []
+var amount := 1.0 # 0..1: share of the streaks shown (a shower builds up)
 
 
 func _ready() -> void:
@@ -29,6 +30,7 @@ func _new_drop(anywhere: bool) -> Dictionary:
 
 
 func _draw() -> void:
-	for d in _drops:
+	for i in int(_drops.size() * amount):
+		var d: Dictionary = _drops[i]
 		var p: Vector2 = d.p
 		draw_line(p, p + Vector2(-5, 30) * d.speed, Color(0.75, 0.85, 1.0, 0.28), 2.0)

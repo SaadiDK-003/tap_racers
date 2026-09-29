@@ -5,12 +5,14 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 ## Menu
 - **Home:** a big **PLAY** button with a one-line summary of your race settings, **RACE SETUP**, **CAREER** (with your star count), Garage, Records, Awards, How to Play, and the daily challenge. The gear in the top corner opens Settings.
 - **Race setup:** players, CPU rivals and level, races, laps, items and weather, plus who's on the grid (with the CPU drivers' names).
-- **Settings:** sound, music, vibration (phones and tablets) and fullscreen (desktop only).
+- **Settings:** sound, music, replays, vibration (phones and tablets) and fullscreen (desktop only).
 
 ## Modes
 - **Players and CPU rivals:** 1–4 human players, with CPU rivals filling the grid up to 4 cars. A single player always gets at least one CPU. CPU level is Easy, Normal or Hard.
 - **Career:** 10 solo events on set tracks against named CPU rivals, from Rookie Run (Easy) to Blaze's Final (Hard, 6 laps). Each event has fixed laps, weather and items, and pays up to 3 stars: a podium finish (which unlocks the next event), a win, and the event's goal (e.g. no crashes, 3 nitros, 3 close calls, an item hit, a perfect lap, or winning by 2 seconds). Every new star pays 25 coins. Your own race settings come back when you leave career.
 - **Win streak king:** a human who wins 2 races in a row becomes KING, with a crown and win count on their pad, and the start banner names them. Each further win pays the king 15 coins, and another human who beats the king gets 40. A CPU win ends the streak. It carries over REMATCH, NEW TRACK and Cup races, and resets on the main menu.
+- **Weekly challenge:** a chip on the home screen shows this week's track and rule (the same for everyone, new every Monday): NO NITRO, NIGHT RACE, STORM, ROCKET PARTY (every box is a rocket), MINEFIELD (every box is mines) or HARD RIVALS. Tap it to race P1 against three CPUs. The first win of the week pays 200 coins (and the WEEKEND WARRIOR award); retry as often as you like. Your own race settings come back afterwards.
+- **Replay:** after the finish, the race's best moment plays back in slow motion before the results, zoomed in on the action: a train or rocket hit, a mine, a double lightning strike, a splash, big air or a last-lap lead change. Tap to skip, or turn REPLAYS off in Settings.
 - **Rematch:** after a single race, REMATCH replays the same track, and NEW TRACK picks a random one.
 - **Races:** *Single* race, or a *Cup* of 3 or 5 races on random tracks with no repeats. Points are 10 / 6 / 3 / 1, and standings show after each race. The Cup ends on a podium with a trophy.
 - **CPU drivers:** each race picks CPU rivals from 8 personalities: Blaze, Captain Crash, Granny Speed, Turbo Tina, Professor Pit, Rookie Ray, Duchess and Zippy. Their name shows on their pad and in the results, and now and then they say something in a speech bubble when they start, overtake, take the lead, get hit, crash or win.
@@ -28,7 +30,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
   | Winning a Cup | +100 |
   | Daily challenge | +100 |
 
-- **Garage:** tabs for BODY, DECAL and TRAIL, picked separately for each player:
+- **Garage:** tabs for BODY, DECAL and TRAIL, picked separately for each player. Every body has its own engine sound, and tapping one revs it:
   - **Bodies:** Classic, Kart 150, Formula 250, Buggy 300, Muscle 350, Hover 450.
   - **Decals:** Plain, Stripes 60, Number 80, Polka 90, Checker 100, Stars 120, Zigzag 130, Flames 150, Lightning 200.
   - **Speed trails:** Classic, Fire 120, Ice 120, Neon 160, Gold 200, Rainbow 300.
@@ -53,7 +55,7 @@ Local multiplayer (2–4 players) one-button slot-car racing for mobile and desk
 - **WEATHER (RANDOM / CLEAR / RAIN / NIGHT):**
   - **Rain** means less grip in corners, rain streaks, spray behind cars and rain sound.
   - **Night** means a dark track, headlight beams and glowing street lamps.
-  - **Random** is mostly clear, with rain or night about 20% of the time each.
+  - **Random** is mostly clear, with rain or night about 20% of the time each. About 3 in 10 clear races (of 3+ laps) get a **shower** partway through: lightning, thunder and RAIN INCOMING!, then the rain and slippery corners build up over 5 seconds. Winning once it's raining counts as a rain win.
 
 ## Phones
 - **Pads:** on phones they're plain coloured buttons (no key letters), thumb-sized, set in from the screen edges clear of Android's edge-gesture zones, and give a small vibration on every press. With a keyboard they're 30% smaller and show each player's key, so the track gets more of the screen. `--touch` previews the phone layout on desktop.
@@ -122,7 +124,11 @@ Thirteen tracks are in the random rotation, each with its own scenery theme:
 - **Harbor Docks**: an L-shaped circuit around a port, with container yards, boats, cranes and dock lamps.
 - **Splash Canyon**: a desert canyon with a **jump over a river**. Hit the ramp at speed (at least about two-thirds of top speed) to fly across. Too slow and it's a SPLASH, and you come back on the far bank. Nitro gives BIG AIR.
 
-For your own jump track, set `m.jump_point` to the middle of the water gap on a long straight. The river is drawn automatically and stops before it reaches any other part of the road.
+- **Quarry Cut**: a hairpin at the top with a narrow **gravel shortcut** right beside it, cutting the turn short. Slow down at the SHORTCUT sign (let go before the fork) to turn in; keep your finger down to stay on the hairpin. The shortcut is shorter but loose, and a nitro burst won't have run out by the fork, so each lap it's nitro or shortcut (about even). Its item boxes and mines are on the main road, and rockets don't follow you onto it.
+- **Summit Leap**: an alpine track with a **ravine jump** at the top of the long straight, taken off a hill crest. It's a bigger gap than Splash Canyon's river: keep your foot down up the hill (about 88% of top speed) or you FALL IN and come back on the far side. With nitro it's huge BIG AIR.
+- **Rail Crossing**: countryside with a **railway level crossing** on the long straight. Every 7–12 s the lights flash, a bell rings and the barriers drop; 2 s later a train sweeps across into a tunnel. Wait at the barrier, or risk it: the train knocks you off (a shield saves you). Players heading for it get a "TRAIN!" warning. CPUs stop for it and hold their nitro; Easy ones sometimes chance it.
+
+For your own jump track, set `m.jump_point` to the middle of the gap on a long straight, and optionally `m.jump_kind = "ravine"`, `m.jump_gap`, `m.jump_ramp` and `m.jump_min_speed` (the river is 120 / 40 / 470). The river is drawn automatically and stops before it reaches any other part of the road. For a shortcut, set `m.shortcut_from` and `m.shortcut_to` (points on the main road) and `m.shortcut` (the points in between). For a level crossing, set `m.rail_point` on a straight: the rails run off the map on one side and end in a tunnel wherever another part of the road would be in the way.
 
 Scenery (`scripts/scenery.gd`) is generated automatically in the empty ground around and inside each track, along with tyre walls outside the corners, a grandstand at the start line and spectator parking lots.
 
@@ -138,10 +144,12 @@ Pass these after `--`:
 godot --path . -- --race --players=4 --map=1 --laps=2 --bots
 ```
 - `--players=1 --cpus=3 --cpu_level=2 --races=3` sets up a race against CPUs. `--log` prints lap times, and `--podium` jumps to a sample Cup podium.
-- `--weather=rain` (or `clear` / `night` / `random`) and `--items=off` set the weather and turn power-ups off.
+- `--weather=rain` (or `clear` / `night` / `random`) and `--items=off` set the weather and turn power-ups off. `--shower` (or `--shower=3`) makes rain roll in on lap 2 (or 3); `--shot_on=shower --shot_time=2` screenshots 2 s after it starts (`--shot_on=train` does the same when a train appears, `--shot_on=replay` during the replay). `tools/check_replay.gd` checks a replay starts, skips and hands back to the results.
 - `--menu_panel=setup` (or `settings`) opens that menu panel directly.
 - `--scene=garage` (or `records`; `--garage_tab=2` opens the trail tab) opens that screen directly, and `--coins=500` sets the coin balance for testing.
 - `--streak=2,3` makes P2 the king with 3 wins in a row.
+- `--shortcut=always` (or `never`) makes computer drivers always (or never) take a shortcut, and `--nitro=off` turns nitro off (for comparing lap times).
+- `--race --weekly` races this week's challenge; `--week=N` pretends it's week N.
 - `--race --career=3` races career event 4 (numbered from 0).
 - `--tutorial` starts the tutorial, `--races=0` starts a time trial, and `--autopilot` lets the bot drive P1 while still saving results.
 - `--bots` makes the computer drive every car well. `--bots=coast` makes them let go before a jump, to test splashes. `--bots=reckless` never brakes (to test crashes).

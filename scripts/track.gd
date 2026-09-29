@@ -30,6 +30,8 @@ func setup(map_def, offsets: Array[float]) -> void:
 	_runs = _find_corner_runs()
 	_find_bridge()
 	_find_jump()
+	_find_rail()
+	_build_shortcut()
 	# Scenery is placed when the track is fitted to the screen (see rebuild_scenery),
 	# since parking lots depend on what's visible. Building it here too was wasted work.
 	_build_visuals()
@@ -109,8 +111,9 @@ func lamp_points() -> PackedVector2Array:
 
 # --- Jump over water ------------------------------------------------------------
 
-const JUMP_RAMP := 40.0 # length of the take-off and landing ramps
-const JUMP_GAP := 120.0 # length of open water between the ramps
+var jump_ramp := 40.0 # length of the take-off and landing ramps (from the map)
+var jump_gap := 120.0 # length of the gap between the ramps
+var jump_min := 470.0 # speed needed at the lip to clear it
 var _jump_s := -1.0 # distance along the loop of the middle of the gap (-1 = none)
 var _river_from := 0.0 # river extent across the road (negative side .. positive side)
 var _river_to := 0.0
@@ -122,7 +125,7 @@ func has_jump() -> bool:
 
 ## Distance along the loop where cars leave the ground (end of the take-off ramp).
 func jump_lip() -> float:
-	return fposmod(_jump_s - JUMP_GAP * 0.5, length)
+	return fposmod(_jump_s - jump_gap * 0.5, length)
 
 
 ## 0..1 across the water gap, or -1 when `s` isn't over the gap.
@@ -130,7 +133,7 @@ func jump_fraction(s: float) -> float:
 	if _jump_s < 0.0:
 		return -1.0
 	var d := fposmod(s - jump_lip(), length)
-	return d / JUMP_GAP if d <= JUMP_GAP else -1.0
+	return d / jump_gap if d <= jump_gap else -1.0
 
 
 ## Distance from `s` ahead to the take-off lip (0..length).
@@ -142,8 +145,8 @@ func dist_to_lip(s: float) -> float:
 func in_jump_zone(s: float) -> bool:
 	if _jump_s < 0.0:
 		return false
-	var d := fposmod(s - jump_lip() + JUMP_RAMP + 30.0, length)
-	return d <= JUMP_GAP + (JUMP_RAMP + 30.0) * 2.0
+	var d := fposmod(s - jump_lip() + jump_ramp + 30.0, length)
+	return d <= jump_gap + (jump_ramp + 30.0) * 2.0
 
 
 const JUMP_RIVER := 900.0 # how far the river runs either side of the road
@@ -173,6 +176,9 @@ func _find_jump() -> void:
 	var jp: Vector2 = map.jump_point
 	if not jp.is_finite():
 		return
+	jump_gap = map.jump_gap
+	jump_ramp = map.jump_ramp
+	jump_min = map.jump_min_speed
 	var best := 0
 	for i in _n:
 		if _pos[i].distance_to(jp) < _pos[best].distance_to(jp):
@@ -193,7 +199,7 @@ func _find_jump() -> void:
 			var clear := true
 			for i in range(0, _n, 2):
 				var ds := absf(fposmod(i * _step - _jump_s + length * 0.5, length) - length * 0.5)
-				if ds > JUMP_GAP + 200.0 and _pos[i].distance_to(q) < map.road_width * 0.5 + JUMP_GAP * 0.5 + 60.0:
+				if ds > jump_gap + 200.0 and _pos[i].distance_to(q) < map.road_width * 0.5 + jump_gap * 0.5 + 60.0:
 					clear = false
 					break
 			if not clear:
@@ -204,21 +210,330 @@ func _find_jump() -> void:
 	_river_to = limits[1]
 
 
+# --- Shortcut ----------------------------------------------------------------------
+# A second, narrower road from the fork (main-loop distance _sc_a) to the merge
+# (_sc_b). Cars keep their progress in main-loop units; on the shortcut it advances
+# shortcut_factor() times faster than they drive, which is what makes it short.
+
+const SC_WIDTH := 70.0
+const SC_LANES := 0.3 # lane offsets are squeezed to this on the narrow road
+const SC_GRIP := 0.88 # loose gravel
+const SC_TAKE_SPEED := 520.0 # reach the fork slower than this and you turn in
+var _sc_a := -1.0
+var _sc_b := 0.0
+var _sc_main := 1.0 # main-loop distance the shortcut skips
+var sc_len := 1.0 # length of the shortcut road
+var _sc_step := STEP
+var _sc_pos := PackedVector2Array()
+var _sc_tan := PackedVector2Array()
+var _sc_curv := PackedFloat32Array()
+
+
+func has_shortcut() -> bool:
+	return _sc_a >= 0.0
+
+
+func shortcut_factor() -> float:
+	return _sc_main / sc_len
+
+
+## Distance along the main loop to the fork (0 .. length).
+func dist_to_fork(s: float) -> float:
+	return fposmod(_sc_a - s, length)
+
+
+## Is main-loop progress `s` within the stretch the shortcut skips?
+func in_shortcut(s: float) -> bool:
+	return has_shortcut() and fposmod(s - _sc_a, length) < _sc_main
+
+
+## Main-loop progress -> distance along the shortcut.
+func sc_u(s: float) -> float:
+	return fposmod(s - _sc_a, length) / _sc_main * sc_len
+
+
+func sc_point(u: float, offset := 0.0) -> Vector2:
+	var f := clampf(u, 0.0, sc_len) / _sc_step
+	var i := mini(int(f), _sc_pos.size() - 2)
+	var t := f - i
+	var tg := _sc_tan[i].lerp(_sc_tan[i + 1], t).normalized()
+	return _sc_pos[i].lerp(_sc_pos[i + 1], t) + Vector2(-tg.y, tg.x) * offset * SC_LANES
+
+
+func sc_tangent(u: float) -> Vector2:
+	var f := clampf(u, 0.0, sc_len) / _sc_step
+	var i := mini(int(f), _sc_pos.size() - 2)
+	return _sc_tan[i].lerp(_sc_tan[i + 1], f - i).normalized()
+
+
+## Curvature `u` along the shortcut; past its end it carries on along the main road.
+func sc_curvature(u: float) -> float:
+	if u > sc_len:
+		return curvature_at(_sc_b + (u - sc_len))
+	var i := clampi(int(u / _sc_step), 0, _sc_curv.size() - 1)
+	return _sc_curv[i]
+
+
+func shortcut_points() -> PackedVector2Array:
+	return _sc_pos
+
+
+func _nearest_s(p: Vector2) -> float:
+	var best := 0
+	for i in _n:
+		if _pos[i].distance_to(p) < _pos[best].distance_to(p):
+			best = i
+	return best * _step
+
+
+func _build_shortcut() -> void:
+	if map.shortcut.is_empty() or not map.shortcut_from.is_finite():
+		return
+	_sc_a = _nearest_s(map.shortcut_from)
+	_sc_b = _nearest_s(map.shortcut_to)
+	_sc_main = fposmod(_sc_b - _sc_a, length)
+	var a := point_at(_sc_a)
+	var b := point_at(_sc_b)
+	var ta := tangent_at(_sc_a)
+	var tb := tangent_at(_sc_b)
+	var pts: Array[Vector2] = [a]
+	pts.append_array(Array(map.shortcut))
+	pts.append(b)
+	var curve := Curve2D.new()
+	curve.bake_interval = 2.0
+	for i in pts.size():
+		var handle: Vector2
+		if i == 0:
+			handle = ta * 70.0 # leaves along the main road...
+		elif i == pts.size() - 1:
+			handle = tb * 70.0 # ...and rejoins along it
+		else:
+			handle = (pts[i + 1] - pts[i - 1]) / 6.0
+		curve.add_point(pts[i], -handle, handle)
+	sc_len = curve.get_baked_length()
+	var n := maxi(4, int(sc_len / STEP))
+	_sc_step = sc_len / n
+	_sc_pos.resize(n + 1)
+	_sc_tan.resize(n + 1)
+	for i in n + 1:
+		_sc_pos[i] = curve.sample_baked(i * _sc_step, true)
+	for i in n + 1:
+		_sc_tan[i] = (_sc_pos[mini(i + 1, n)] - _sc_pos[maxi(i - 1, 0)]).normalized()
+	var k := 8
+	var raw := PackedFloat32Array()
+	raw.resize(n + 1)
+	for i in n + 1:
+		raw[i] = _sc_tan[maxi(i - k, 0)].angle_to(_sc_tan[mini(i + k, n)]) / (2.0 * k * _sc_step)
+	for _pass in 4:
+		var smooth := PackedFloat32Array()
+		smooth.resize(n + 1)
+		for i in n + 1:
+			var sum := 0.0
+			for j in range(-6, 7):
+				sum += raw[clampi(i + j, 0, n)]
+			smooth[i] = sum / 13.0
+		raw = smooth
+	_sc_curv = raw
+
+
+func _draw_shortcut(ci: CanvasItem) -> void:
+	if not has_shortcut():
+		return
+	var gravel := Color(0.62, 0.5, 0.36)
+	var edge := Color(0.42, 0.33, 0.24)
+	for layer in [[SC_WIDTH + 20.0, Color(0, 0, 0, 0.25), Vector2(0, 8)], [SC_WIDTH + 10.0, edge, Vector2.ZERO], [SC_WIDTH, gravel, Vector2.ZERO]]:
+		var w: float = layer[0]
+		for i in range(0, _sc_pos.size(), 2):
+			ci.draw_circle(_sc_pos[i] + layer[2], w * 0.5, layer[1])
+	# Loose stones and a dashed centre line.
+	for i in range(8, _sc_pos.size() - 8, 14):
+		ci.draw_line(_sc_pos[i] - _sc_tan[i] * 10.0, _sc_pos[i] + _sc_tan[i] * 10.0, Color(0.85, 0.78, 0.62, 0.8), 3.0)
+	for i in range(3, _sc_pos.size() - 3, 9):
+		var n := Vector2(-_sc_tan[i].y, _sc_tan[i].x)
+		ci.draw_circle(_sc_pos[i] + n * (float((i * 37) % 41) - 20.0), 2.5, edge)
+
+
+## SHORTCUT sign and arrow, painted on the main road just before the fork (drawn
+## after the road, so it's on top).
+func _draw_shortcut_sign(ci: CanvasItem) -> void:
+	if not has_shortcut():
+		return
+	# SHORTCUT sign painted on the road just before the fork, on the side it leaves.
+	var side := signf(tangent_at(_sc_a).cross(_sc_pos[mini(20, _sc_pos.size() - 1)] - point_at(_sc_a)))
+	var q := point_at(_sc_a - 150.0, side * map.road_width * 0.22)
+	var font := ThemeDB.fallback_font
+	var tg := tangent_at(_sc_a - 150.0)
+	ci.draw_set_transform(q, tg.angle() + PI * 0.5)
+	ci.draw_string(font, Vector2(-60, 0), "SHORTCUT", HORIZONTAL_ALIGNMENT_CENTER, 120, 18, Color(1, 1, 1, 0.75))
+	ci.draw_string(font, Vector2(-60, 20), "SLOW DOWN", HORIZONTAL_ALIGNMENT_CENTER, 120, 13, Color(1.0, 0.85, 0.3, 0.8))
+	ci.draw_set_transform(Vector2.ZERO)
+	# Arrow on the road: up the lane, then bending off towards the shortcut.
+	var off: float = side * map.road_width * 0.3
+	var p0 := point_at(_sc_a - 125.0, off)
+	var p1 := point_at(_sc_a - 80.0, off)
+	var d := tangent_at(_sc_a - 80.0).rotated(side * 0.6)
+	var p2 := p1 + d * 28.0
+	var white := Color(1, 1, 1, 0.7)
+	ci.draw_line(p0, p1, white, 6.0)
+	ci.draw_line(p1, p2, white, 6.0)
+	ci.draw_circle(p1, 3.0, white)
+	for a in [0.6, -0.6]:
+		ci.draw_line(p2, p2 - d.rotated(a) * 16.0, white, 6.0)
+
+
+# --- Railway level crossing -------------------------------------------------------
+# The rails run straight across the road (along the road's normal) at _rail_s. Each
+# end either runs off the map or, if another part of the road is in the way, stops
+# at a tunnel portal. Positions along the rails are "t": the same as a lane offset.
+
+const RAIL_HALF := 30.0 # half width of the ballast bed
+const RAIL_REACH := 1400.0 # an end this far out is off the map
+var _rail_s := -1.0
+var rail_from := 0.0 # t of each end (negative side .. positive side)
+var rail_to := 0.0
+var rail_tunnel := [false, false] # [from end, to end]: ends in a tunnel portal
+
+
+func has_rail() -> bool:
+	return _rail_s >= 0.0
+
+
+func rail_s() -> float:
+	return _rail_s
+
+
+func rail_origin() -> Vector2:
+	return point_at(_rail_s, 0.0)
+
+
+## Direction of the rails (+t).
+func rail_dir() -> Vector2:
+	var along := tangent_at(_rail_s)
+	return Vector2(-along.y, along.x)
+
+
+## Signed distance along the road from the crossing (negative: before it).
+func dist_from_rail(s: float) -> float:
+	return fposmod(s - _rail_s + length * 0.5, length) - length * 0.5
+
+
+func _find_rail() -> void:
+	var rp: Vector2 = map.rail_point
+	if not rp.is_finite():
+		return
+	var best := 0
+	for i in _n:
+		if _pos[i].distance_to(rp) < _pos[best].distance_to(rp):
+			best = i
+	_rail_s = best * _step
+	var c := rail_origin()
+	var dir := rail_dir()
+	var ends: Array[float] = []
+	for side in [-1.0, 1.0]:
+		var t: float = map.road_width * 0.5
+		var reach := RAIL_REACH
+		while t < RAIL_REACH:
+			t += 20.0
+			var q: Vector2 = c + dir * side * t
+			var clear := true
+			for i in range(0, _n, 2):
+				var ds := absf(fposmod(i * _step - _rail_s + length * 0.5, length) - length * 0.5)
+				if ds > 260.0 and _pos[i].distance_to(q) < map.road_width * 0.5 + RAIL_HALF + 70.0:
+					clear = false
+					break
+			if not clear:
+				reach = maxf(map.road_width * 0.5 + 60.0, t - 60.0)
+				break
+		ends.append(reach)
+	rail_from = -ends[0]
+	rail_to = ends[1]
+	rail_tunnel = [ends[0] < RAIL_REACH, ends[1] < RAIL_REACH]
+
+
+## Points along the railway (keeps scenery off the rails and the tunnel mound).
+func rail_points() -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if _rail_s < 0.0:
+		return out
+	var c := rail_origin()
+	var dir := rail_dir()
+	var t := rail_from
+	while t <= rail_to:
+		out.append(c + dir * t)
+		t += 40.0
+	return out
+
+
+func _draw_rail(ci: CanvasItem) -> void:
+	if _rail_s < 0.0:
+		return
+	var c := rail_origin()
+	var dir := rail_dir()
+	var along := tangent_at(_rail_s)
+	var road_half: float = map.road_width * 0.5 + 12.0 # road plus curbs
+	var p := func(t: float, a: float) -> Vector2: return c + dir * t + along * a
+	var quad := func(t0: float, t1: float, a0: float, a1: float, col: Color) -> void:
+		ci.draw_colored_polygon(PackedVector2Array([p.call(t0, a0), p.call(t1, a0), p.call(t1, a1), p.call(t0, a1)]), col)
+	# Tunnel mounds under everything else at a blocked end.
+	for k in 2:
+		if rail_tunnel[k]:
+			var te: float = rail_from if k == 0 else rail_to
+			var out_dir := -1.0 if k == 0 else 1.0
+			ci.draw_circle(p.call(te + out_dir * 34.0, 0.0), 70.0, map.ground.darkened(0.28))
+			ci.draw_circle(p.call(te + out_dir * 30.0, 0.0), 58.0, map.ground.darkened(0.16))
+	# Ballast (gravel) and sleepers, off the road; the rails run right across.
+	var gravel := Color(0.5, 0.47, 0.43)
+	var sleeper := Color(0.36, 0.25, 0.17)
+	for seg in [[rail_from, -road_half], [road_half, rail_to]]:
+		if seg[1] <= seg[0]:
+			continue
+		quad.call(seg[0], seg[1], -RAIL_HALF, RAIL_HALF, gravel)
+		var t: float = seg[0] + 8.0
+		while t < seg[1] - 4.0:
+			quad.call(t, t + 8.0, -RAIL_HALF + 6.0, RAIL_HALF - 6.0, sleeper)
+			t += 20.0
+	# Level crossing: dark rubber panels on the road.
+	quad.call(-road_half, road_half, -RAIL_HALF + 4.0, RAIL_HALF - 4.0, map.road.darkened(0.3))
+	for a in [-12.0, 12.0]:
+		ci.draw_line(p.call(rail_from, a), p.call(rail_to, a), Color(0.18, 0.18, 0.2), 5.0)
+		ci.draw_line(p.call(rail_from, a), p.call(rail_to, a), Color(0.72, 0.74, 0.78), 2.5)
+	# Tunnel mouths.
+	for k in 2:
+		if rail_tunnel[k]:
+			var te: float = rail_from if k == 0 else rail_to
+			var out_dir := -1.0 if k == 0 else 1.0
+			quad.call(te - out_dir * 4.0, te + out_dir * 18.0, -RAIL_HALF - 10.0, RAIL_HALF + 10.0, Color(0.42, 0.4, 0.4))
+			quad.call(te, te + out_dir * 22.0, -RAIL_HALF + 2.0, RAIL_HALF - 2.0, Color(0.05, 0.05, 0.07))
+	# Crossbuck signs (white X on a post) on both sides, before the crossing.
+	for side in [-1.0, 1.0]:
+		var q: Vector2 = p.call(side * (road_half + 20.0), -(RAIL_HALF + 26.0))
+		ci.draw_circle(q, 5.0, Color(0.2, 0.2, 0.22))
+		var d1 := Vector2(1, 1).normalized() * 13.0
+		var d2 := Vector2(1, -1).normalized() * 13.0
+		for d in [d1, d2]:
+			ci.draw_line(q - d, q + d, Color(0.1, 0.1, 0.12), 7.0)
+			ci.draw_line(q - d, q + d, Color(0.97, 0.97, 0.95), 4.0)
+
+
 ## River under the gap and striped ramps on either side, painted over the road.
 func _draw_jump(ci: CanvasItem) -> void:
 	if _jump_s < 0.0:
 		return
 	var w: float = map.road_width
 	var lip := jump_lip()
-	var land := lip + JUMP_GAP
+	var land := lip + jump_gap
 	# A winding river crosses the whole canyon under the gap: sandy banks, water, ripples.
 	var cj: Vector2 = point_at(_jump_s, 0.0)
 	var along: Vector2 = tangent_at(_jump_s)
 	var across := Vector2(-along.y, along.x)
+	if map.jump_kind == "ravine":
+		_draw_ravine(ci, cj, along, across)
+		_draw_ramps(ci, lip, land, true)
+		return
 	# The infield end is a round pond (a river can't cross the track a second time).
 	var pond_t := _river_from if absf(_river_from) < absf(_river_to) else _river_to
 	for layer in 2:
-		var half := JUMP_GAP * 0.5 + (10.0 if layer == 0 else 0.0)
+		var half := jump_gap * 0.5 + (10.0 if layer == 0 else 0.0)
 		var col := Color(0.72, 0.6, 0.42) if layer == 0 else Color(0.14, 0.42, 0.62)
 		var poly := PackedVector2Array()
 		var steps := 40
@@ -232,14 +547,34 @@ func _draw_jump(ci: CanvasItem) -> void:
 		ci.draw_circle(cj + across * pond_t + along * _river_bend(pond_t), half * 1.25, col)
 	for k in 12:
 		var t := lerpf(_river_from, _river_to, (k + 0.5) / 12.0)
-		var q: Vector2 = cj + across * t + along * (_river_bend(t) + (k % 3 - 1) * JUMP_GAP * 0.25)
+		var q: Vector2 = cj + across * t + along * (_river_bend(t) + (k % 3 - 1) * jump_gap * 0.25)
 		ci.draw_line(q - across * 16.0, q + across * 16.0, Color(0.55, 0.8, 0.95, 0.6), 3.0, true)
-	# Ramps: yellow/black warning stripes, brighter towards the edge of the gap.
-	for r in [[lip - JUMP_RAMP, lip], [land, land + JUMP_RAMP]]:
+	_draw_ramps(ci, lip, land, false)
+
+
+## Ramps: yellow/black warning stripes, brighter towards the edge of the gap. On a
+## hill crest (`hill`) the ramp is shaded like a slope, with stripes only at the lip.
+func _draw_ramps(ci: CanvasItem, lip: float, land: float, hill: bool) -> void:
+	var w: float = map.road_width
+	for r in [[lip - jump_ramp, lip], [land, land + jump_ramp]]:
 		var s0: float = r[0]
 		var s1: float = r[1]
 		var quad := PackedVector2Array([point_at(s0, -w * 0.5), point_at(s1, -w * 0.5), point_at(s1, w * 0.5), point_at(s0, w * 0.5)])
 		ci.draw_colored_polygon(quad, Color(0.35, 0.35, 0.38))
+		if hill:
+			# Slope shading: darker at the foot, lighter towards the crest at the gap.
+			var bands := 8
+			for b in bands:
+				var f0 := float(b) / bands
+				var f1 := float(b + 1) / bands
+				var toward_gap := s0 < lip
+				var a0: float = lerpf(s0, s1, f0)
+				var a1: float = lerpf(s0, s1, f1)
+				var light := f1 if toward_gap else 1.0 - f0
+				var band := PackedVector2Array([point_at(a0, -w * 0.5 - 6.0), point_at(a1, -w * 0.5 - 6.0), point_at(a1, w * 0.5 + 6.0), point_at(a0, w * 0.5 + 6.0)])
+				ci.draw_colored_polygon(band, map.road.lerp(Color(0.62, 0.62, 0.66), light * 0.7))
+			s0 = s1 - 18.0 if s0 < lip else s0
+			s1 = s0 + 18.0 if s0 >= lip else s1
 		var n := 7
 		for k in n:
 			var a0 := -w * 0.5 + w * k / n
@@ -248,6 +583,43 @@ func _draw_jump(ci: CanvasItem) -> void:
 			ci.draw_colored_polygon(stripe, Color(1.0, 0.8, 0.1) if k % 2 == 0 else Color(0.08, 0.08, 0.1))
 		var edge := s1 if s0 < lip else s0
 		ci.draw_line(point_at(edge, -w * 0.5), point_at(edge, w * 0.5), Color(0.95, 0.95, 0.95), 4.0)
+
+
+## A rocky chasm across the canyon: a jagged rim, dark walls and a black depth,
+## narrowing to a crack at the infield end (it can't cross the road a second time).
+func _draw_ravine(ci: CanvasItem, cj: Vector2, along: Vector2, across: Vector2) -> void:
+	var inner_t := _river_from if absf(_river_from) < absf(_river_to) else _river_to
+	# Full width under the road (and a little beyond); it narrows only past that.
+	var full: float = map.road_width * 0.5 + 24.0
+	var taper_len := maxf(20.0, absf(inner_t) - full)
+	var taper_at := func(t: float) -> float:
+		if signf(t) != signf(inner_t) or absf(t) <= full:
+			return 1.0
+		return clampf(absf(t - inner_t) / taper_len, 0.08, 1.0)
+	var layers := [[18.0, map.blob.darkened(0.25)], [6.0, Color(0.28, 0.25, 0.24)], [-8.0, Color(0.13, 0.11, 0.11)], [-30.0, Color(0.04, 0.03, 0.04)]]
+	for li in layers.size():
+		var grow: float = layers[li][0]
+		var col: Color = layers[li][1]
+		var poly := PackedVector2Array()
+		var steps := 60
+		for side in [-1.0, 1.0]:
+			for k in steps + 1:
+				var f := float(k) / steps if side < 0.0 else 1.0 - float(k) / steps
+				var t := lerpf(_river_from, _river_to, f)
+				# Narrow to a crack over the last stretch at the infield end.
+				var taper: float = taper_at.call(t)
+				var jag := sin(t * 0.09 + side * 2.1 + li) * 5.0 + sin(t * 0.23 + side) * 3.0
+				var half := maxf(2.0, (jump_gap * 0.5 + grow + jag) * taper)
+				poly.append(cj + across * t + along * (_river_bend(t) + side * half))
+		ci.draw_colored_polygon(poly, col)
+	# A few rocks on the rim.
+	for k in 14:
+		var t := lerpf(_river_from, _river_to, (k + 0.5) / 14.0)
+		var side := 1.0 if k % 2 == 0 else -1.0
+		var taper: float = taper_at.call(t)
+		var q: Vector2 = cj + across * t + along * (_river_bend(t) + side * (jump_gap * 0.5 + 16.0) * taper)
+		ci.draw_circle(q, 7.0 + (k % 3) * 2.0, Color(0.42, 0.4, 0.4))
+		ci.draw_circle(q - Vector2(2, 2), 4.0 + (k % 3), Color(0.55, 0.53, 0.52))
 
 
 func has_bridge() -> bool:
@@ -382,10 +754,13 @@ func _build_visuals() -> void:
 	shadow.position = Vector2(0, 10)
 	_bake_root.add_child(shadow)
 	_add_layer(func(ci): _draw_band(ci, map.road_width + 40.0, Color.BLACK), shadow)
+	_add_layer(_draw_shortcut, _bake_root) # under the main road, so the forks blend in
 	_add_layer(_draw_curbs, _bake_root)
 	_add_layer(func(ci): _draw_band(ci, map.road_width, map.road), _bake_root)
 	_add_layer(_draw_details, _bake_root)
+	_add_layer(_draw_shortcut_sign, _bake_root)
 	_add_layer(_draw_jump, _bake_root)
+	_add_layer(_draw_rail, _bake_root)
 	_scenery_layer = _add_layer(func(ci): Scenery.draw_all(ci, _props), _bake_root)
 	_baked = Sprite2D.new()
 	_baked.centered = false

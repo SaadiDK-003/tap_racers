@@ -10,6 +10,7 @@ const MAPS := [
 	"res://maps/frosty_peaks.gd", "res://maps/palm_beach.gd", "res://maps/crossover.gd",
 	"res://maps/volcano_rush.gd", "res://maps/neon_nights.gd", "res://maps/autumn_valley.gd", "res://maps/orbit_station.gd",
 	"res://maps/farmland_twist.gd", "res://maps/harbor_docks.gd", "res://maps/splash_canyon.gd",
+	"res://maps/rail_crossing.gd", "res://maps/summit_leap.gd", "res://maps/quarry_cut.gd",
 ]
 
 

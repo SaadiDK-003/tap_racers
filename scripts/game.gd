@@ -46,6 +46,9 @@ const MAPS := [
 	preload("res://maps/farmland_twist.gd"),
 	preload("res://maps/harbor_docks.gd"),
 	preload("res://maps/splash_canyon.gd"),
+	preload("res://maps/rail_crossing.gd"),
+	preload("res://maps/summit_leap.gd"),
+	preload("res://maps/quarry_cut.gd"),
 ]
 
 var num_players := 2 # humans
@@ -94,6 +97,9 @@ var debug_shot := ""
 var debug_shot_time := 1.0
 var debug_shot_on := "" # --shot_on=rocket: take the --shot screenshot just after a rocket fires
 var debug_skip_menu := false
+var debug_no_nitro := false # --nitro=off (tests)
+var debug_shortcut := "" # --shortcut=always / never: computer drivers' choice (tests)
+var debug_shower := -1 # --shower (or --shower=LAP): rain rolls in mid-race
 
 
 func _ready() -> void:
@@ -328,7 +334,7 @@ func load_settings() -> void:
 
 
 func save_settings() -> void:
-	if is_career() or debug_bots or debug_log or debug_shot != "" or OS.get_cmdline_user_args().size() > 0:
+	if is_special() or debug_bots or debug_log or debug_shot != "" or OS.get_cmdline_user_args().size() > 0:
 		return # test runs must not overwrite the player's settings
 	for pair in [["players", num_players], ["cpus", num_cpus], ["cpu_level", cpu_level], ["races", races], ["laps", laps], ["items", items_on], ["weather", weather_mode], ["sound", Sfx.enabled], ["music", Sfx.music_enabled], ["vibration", vibration]]:
 		Profile.data.settings[pair[0]] = pair[1]
@@ -402,9 +408,7 @@ func is_career() -> bool:
 ## Sets up career event `i`: P1 against its three named rivals. The player's own
 ## race settings are kept aside and come back with end_career().
 func start_career(i: int) -> void:
-	if not is_career():
-		_career_backup = {"num_players": num_players, "num_cpus": num_cpus, "cpu_level": cpu_level,
-			"laps": laps, "races": races, "items_on": items_on, "weather_mode": weather_mode}
+	_keep_settings()
 	var e: Dictionary = CareerEvents.event(i)
 	career_event = i
 	tutorial = false
@@ -432,9 +436,90 @@ func end_career() -> void:
 	if not is_career():
 		return
 	career_event = -1
+	_restore_settings()
+
+
+## Career and the weekly challenge set up their own races: the player's settings are
+## kept aside (once) and put back afterwards.
+func _keep_settings() -> void:
+	if _career_backup.is_empty():
+		_career_backup = {"num_players": num_players, "num_cpus": num_cpus, "cpu_level": cpu_level,
+			"laps": laps, "races": races, "items_on": items_on, "weather_mode": weather_mode,
+			"debug_item": debug_item, "nitro_off": nitro_off}
+
+
+func _restore_settings() -> void:
 	for k in _career_backup:
 		set(k, _career_backup[k])
 	_career_backup = {}
+
+
+## Career or the weekly challenge: a set-up race, not the player's own settings.
+func is_special() -> bool:
+	return is_career() or weekly
+
+
+# --- Weekly challenge ------------------------------------------------------------
+# One track and one rule per week (Monday to Sunday), the same for everyone: P1
+# against three CPUs. Winning pays WEEKLY_COINS once a week.
+
+const WEEKLY_COINS := 200
+const WEEKLY_RULES := [
+	{"id": "no_nitro", "name": "NO NITRO", "text": "Nobody gets nitro"},
+	{"id": "night", "name": "NIGHT RACE", "text": "Racing in the dark"},
+	{"id": "storm", "name": "STORM", "text": "Rain all race: slippery corners"},
+	{"id": "rockets", "name": "ROCKET PARTY", "text": "Every box is a rocket"},
+	{"id": "mines", "name": "MINEFIELD", "text": "Every box is mines"},
+	{"id": "hard", "name": "HARD RIVALS", "text": "Three HARD CPUs"},
+]
+var weekly := false
+var nitro_off := false # rule: no nitro for anyone
+var debug_week := -1 # --week=N: pretend it's week N (tests)
+
+
+## Weeks since 1970, starting on Mondays (1 Jan 1970 was a Thursday).
+func week_number() -> int:
+	if debug_week >= 0:
+		return debug_week
+	return floori((floorf(Time.get_unix_time_from_system() / 86400.0) + 3.0) / 7.0)
+
+
+## This week's challenge: {week, map (index), title, rule: {id, name, text}, days_left}.
+func weekly_challenge() -> Dictionary:
+	var w := week_number()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("tap racers week %d" % w)
+	var map_idx := rng.randi() % MAPS.size()
+	# Rules take turns (5 and 6 share no factor, so all six come up, never twice running).
+	var rule: Dictionary = WEEKLY_RULES[(w * 5) % WEEKLY_RULES.size()]
+	var days := floorf(Time.get_unix_time_from_system() / 86400.0) + 3.0
+	return {"week": w, "map": map_idx, "title": MAPS[map_idx].build().title, "rule": rule,
+		"days_left": 7 - int(fposmod(days, 7.0))}
+
+
+func start_weekly() -> void:
+	_keep_settings()
+	var c := weekly_challenge()
+	weekly = true
+	tutorial = false
+	num_players = 1
+	num_cpus = MAX_PLAYERS - 1
+	cpu_level = 2 if c.rule.id == "hard" else 1
+	laps = 5
+	races = 1
+	items_on = true
+	debug_item = {"rockets": "rocket", "mines": "mine"}.get(c.rule.id, "")
+	weather_mode = {"night": 3, "storm": 2}.get(c.rule.id, 1)
+	nitro_off = c.rule.id == "no_nitro"
+	retry_map = c.map
+	start_cup()
+
+
+func end_weekly() -> void:
+	if not weekly:
+		return
+	weekly = false
+	_restore_settings()
 
 
 ## The racer with 2+ wins in a row, or -1. Only human streaks count: CPU rivals
@@ -452,7 +537,7 @@ func reset_streak() -> void:
 ## slain: bool (a human beat the king), coins}.
 func note_winner(winner: int) -> Dictionary:
 	var out := {"king_before": king(), "winner": winner, "streak": 0, "slain": false, "coins": 0}
-	if is_career() or tutorial or is_trial():
+	if is_special() or tutorial or is_trial():
 		return out
 	if is_cpu(winner):
 		reset_streak()
@@ -578,6 +663,11 @@ func _parse_debug_args() -> void:
 				debug_reckless = value == "reckless"
 				debug_coast = value == "coast" # lets go before the jump ramp (tests splashes)
 			"race": debug_skip_menu = true
+			"weekly": set_meta("weekly", true) # with --race: race this week's challenge
+			"week": debug_week = value.to_int()
+			"shortcut": debug_shortcut = value
+			"nitro": debug_no_nitro = value == "off"
+			"shower": debug_shower = maxi(2, value.to_int()) if value != "" else 2
 			"streak": # --streak=2,3: P2 is king with 3 wins in a row
 				var v := value.split(",")
 				streak_player = v[0].to_int() - 1

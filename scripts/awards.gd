@@ -2,6 +2,7 @@ extends Control
 ## Awards: every achievement with how to earn it, its coin reward and whether it's done.
 
 const CoinBadge = preload("res://scripts/coin_badge.gd")
+const SmoothScroll = preload("res://scripts/smooth_scroll.gd")
 
 
 func _ready() -> void:
@@ -34,18 +35,26 @@ func _ready() -> void:
 	header.add_child(CoinBadge.new())
 	outer.add_child(header)
 
-	var scroll := ScrollContainer.new()
+	var scroll := SmoothScroll.new() # touch: drag anywhere, flick to glide
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	outer.add_child(scroll)
 	var center := CenterContainer.new()
 	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL # centred if it all fits
 	scroll.add_child(center)
+	# Breathing room above the first card and below the last one.
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_top", 14)
+	pad.add_theme_constant_override("margin_bottom", 18)
+	pad.add_theme_constant_override("margin_left", 4)
+	pad.add_theme_constant_override("margin_right", 4)
+	center.add_child(pad)
 	var grid := GridContainer.new()
 	grid.columns = 2 if landscape else 1
 	grid.add_theme_constant_override("h_separation", 12)
 	grid.add_theme_constant_override("v_separation", 10)
-	center.add_child(grid)
+	pad.add_child(grid)
 	for a in Profile.ACHIEVEMENTS:
 		grid.add_child(_card(a))
 

@@ -56,7 +56,10 @@ static func build(track, map, view := {}) -> Array[Dictionary]:
 
 	# Keep every prop out of the river (invisible placeholder props along it).
 	for q in track.river_points():
-		_register(grid, props, {"k": "river_space", "p": q, "r": track.JUMP_GAP * 0.5 + 30.0, "rot": 0.0, "seed": 0, "c": Color.WHITE})
+		_register(grid, props, {"k": "river_space", "p": q, "r": track.jump_gap * 0.5 + 30.0, "rot": 0.0, "seed": 0, "c": Color.WHITE})
+	# ...and off the railway (and its tunnel mound).
+	for q in track.rail_points():
+		_register(grid, props, {"k": "river_space", "p": q, "r": track.RAIL_HALF + 34.0, "rot": 0.0, "seed": 0, "c": Color.WHITE})
 	_add_grandstand(track, map, field, props, grid)
 	_add_parking_lots(track, map, field, props, grid, rng, view)
 	_add_tire_walls(track, map, field, props, grid)
@@ -115,6 +118,7 @@ static func _distance_field(track) -> Dictionary:
 	d.resize(w * h)
 	d.fill(FIELD_CAP)
 	var pts: PackedVector2Array = track.points()
+	pts.append_array(track.shortcut_points()) # keep scenery off the shortcut too
 	var reach := int(FIELD_CAP / CELL) + 1
 	for i in range(0, pts.size(), 3):
 		var p := pts[i]
